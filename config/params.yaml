@@ -1,0 +1,68 @@
+# Lunar Navigation System Configuration
+
+# Camera parameters
+camera:
+  image_width: 640
+  image_height: 480
+  focal_length: 458.0
+  fov: 90
+  stereo_baseline: 0.162  # meters
+  cam_x: 0.5
+  cam_z: 1.0
+  cam_pitch: -10
+
+# Stereo matching
+stereo:
+  baseline: 0.162
+  fx: 458.0
+  max_disparity: 128
+  min_disparity: 1
+
+# Depth uncertainty
+uncertainty:
+  max_consistency_error: 2.0
+
+# Mapping
+mapping:
+  resolution: 0.1  # meters per voxel
+  grid_size: [200, 200, 50]
+  origin: [-10, -10, -2]
+
+# Costmap
+costmap:
+  resolution: 0.2
+  size_x: 100
+  size_y: 100
+  origin: [-10, -10]
+  obstacle_weight: 100.0
+  uncertainty_weight: 5.0
+  shadow_weight: 10.0
+  inflation_weight: 20.0
+  robot_radius: 0.5
+  inflation_radius: 1.0
+
+# Planning
+planning:
+  coverage_radius: 5.0
+  min_frontier_size: 3
+
+# Trajectory
+trajectory:
+  max_velocity: 1.0
+  max_acceleration: 0.5
+  smoothing_weight: 0.5
+
+# Control
+control:
+  lookahead_distance: 2.0
+  max_steer: 0.5
+  max_throttle: 0.5
+  kp: 1.0
+  ki: 0.0
+  kd: 0.1
+
+# Visualization
+visualization:
+  window_name: "Lunar Navigation"
+  show_uncertainty: true
+  show_path: true
