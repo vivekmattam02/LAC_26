@@ -1,0 +1,1391 @@
+================================================================================
+           PERCEPTION-AWARE LUNAR ROVER NAVIGATION - COMPLETE PROJECT GUIDE
+================================================================================
+
+Author: Vivek Mattam
+Project: Lunar Autonomy Challenge (LAC)
+Repository: https://github.com/vivekmattam02/LAC_26
+
+================================================================================
+                              TABLE OF CONTENTS
+================================================================================
+
+1. PROJECT OVERVIEW
+2. SYSTEM ARCHITECTURE
+3. THEORY - STEREO VISION & DEPTH
+4. THEORY - 3D MAPPING
+5. THEORY - COSTMAPS
+6. THEORY - PATH PLANNING
+7. THEORY - CONTROL
+8. IMPLEMENTATION GUIDE (WEEK BY WEEK)
+9. CODE STRUCTURE
+10. INTERVIEW PREPARATION
+11. REFERENCES & RESOURCES
+
+================================================================================
+                            1. PROJECT OVERVIEW
+================================================================================
+
+WHAT IS THIS PROJECT?
+---------------------
+An autonomous navigation system for a lunar rover that:
+- Perceives the environment using stereo cameras
+- Localizes itself using ORB-SLAM3
+- Builds dense 3D maps with uncertainty
+- Plans paths that avoid obstacles AND uncertain regions
+- Controls the rover to execute plans
+
+WHY IS IT INTERESTING?
+----------------------
+On the Moon:
+- No GPS (must use visual localization)
+- Harsh lighting (extreme shadows)
+- Texture-less terrain (hard for feature detection)
+- No room for error (robot must know what it doesn't know)
+
+Standard navigation: "Is there an obstacle? Yes/No"
+Our navigation: "Is there an obstacle? How confident am I? Should I risk it?"
+
+THE KEY INSIGHT
+---------------
+Traditional robots treat unknown space as free.
+Our robot treats unknown space as dangerous.
+
+Traditional robots avoid obstacles.
+Our robot avoids obstacles AND uncertain regions.
+
+This is "perception-aware" navigation.
+
+SCORING (LAC Competition)
+-------------------------
+Metric                  Points    What We Need
+------                  ------    ------------
+Geometric Mapping       300       Accurate height map (0.05m threshold)
+Rock Detection          300       Find and locate rocks
+Mapping Productivity    250       Cover area efficiently (cells/second)
+Fiducial Detection      150       AprilTag localization
+------                  ------
+Total                   1000
+
+================================================================================
+                          2. SYSTEM ARCHITECTURE
+================================================================================
+
+HIGH-LEVEL DATA FLOW
+--------------------
+
+    CARLA Lunar Simulator
+            |
+            v
+    +-------------------+
+    |  STEREO CAMERAS   |-----> Left Image + Right Image
+    |  IMU              |-----> Acceleration + Gyroscope
+    |  Ground Truth     |-----> (For evaluation only)
+    +-------------------+
+            |
+            v
+    +-------------------+
+    |    ORB-SLAM3      |-----> Robot Pose (x, y, z, rotation)
+    +-------------------+
+            |
+            v
+    +-------------------+
+    |   STEREO DEPTH    |-----> Dense Depth Map + Uncertainty
+    | (Your code)       |
+    +-------------------+
+            |
+            v
+    +-------------------+
+    |   3D MAPPING      |-----> Voxel Grid + Height Map
+    | (Your code)       |
+    +-------------------+
+            |
+            v
+    +-------------------+
+    |    COSTMAP        |-----> Cost at every cell
+    | (Your code)       |       (obstacles + uncertainty + shadows)
+    +-------------------+
+            |
+            v
+    +-------------------+
+    |   PATH PLANNER    |-----> Waypoints
+    | (Your code)       |
+    +-------------------+
+            |
+            v
+    +-------------------+
+    |   CONTROLLER      |-----> Velocity Commands
+    | (Your code)       |
+    +-------------------+
+            |
+            v
+    CARLA Lunar Simulator (moves the rover)
+
+
+WHAT EACH COMPONENT DOES
+------------------------
+
+Component           Input                   Output                  You Build?
+---------           -----                   ------                  ----------
+ORB-SLAM3           Stereo images           6-DOF Pose              No (exists)
+Stereo Depth        Left + Right images     Depth map + uncertainty Yes
+3D Mapping          Pose + Depth            Voxel grid, Height map  Yes
+Costmap             3D Map + Uncertainty    Cost per cell           Yes
+Path Planner        Costmap + Goal          Path (waypoints)        Yes
+Controller          Path + Current pose     Velocity commands       Yes
+
+
+================================================================================
+                      3. THEORY - STEREO VISION & DEPTH
+================================================================================
+
+THE FUNDAMENTAL PROBLEM
+-----------------------
+A single camera produces 2D images. It CANNOT measure depth.
+
+Why? Consider this:
+- Camera sees a rock that appears 50 pixels wide
+- Is it a small rock 1m away?
+- Is it a big rock 10m away?
+- Impossible to tell from one image
+
+This is called SCALE AMBIGUITY.
+
+
+THE SOLUTION: TWO CAMERAS (STEREO)
+----------------------------------
+With two cameras separated by a known distance (baseline), we can
+triangulate depth.
+
+How it works:
+
+    Left Camera              Right Camera
+         |                        |
+         |<------ baseline ------>|
+         |                        |
+          \                      /
+           \                    /
+            \                  /
+             \                /
+              \              /
+               \            /
+                \          /
+                 \        /
+                  \      /
+                   \    /
+                    \  /
+                     \/
+                     P (3D point in world)
+
+The same point P appears at DIFFERENT pixel locations in each camera.
+
+
+DISPARITY
+---------
+Disparity = difference in x-coordinate between left and right image
+
+    Left Image:  Point P at pixel x = 300
+    Right Image: Point P at pixel x = 250
+
+    Disparity d = 300 - 250 = 50 pixels
+
+
+DEPTH FROM DISPARITY
+--------------------
+The fundamental stereo equation:
+
+    depth = (baseline * focal_length) / disparity
+
+    Where:
+    - baseline = distance between cameras (meters)
+    - focal_length = camera focal length (pixels)
+    - disparity = pixel difference (pixels)
+    - depth = distance to point (meters)
+
+Example (Lunar Rover):
+    baseline = 0.162 m (16.2 cm)
+    focal_length = 458 pixels
+    disparity = 50 pixels
+
+    depth = (0.162 * 458) / 50 = 1.48 meters
+
+
+KEY RELATIONSHIPS
+-----------------
+- Large disparity  --> Object is CLOSE
+- Small disparity  --> Object is FAR
+- Zero disparity   --> Object at infinity (very far)
+
+
+STEREO MATCHING
+---------------
+Problem: How do we find the same point in both images?
+
+Answer: Stereo matching algorithms
+
+Method 1: Block Matching (Simple)
+---------------------------------
+1. Take a small patch (e.g., 5x5 pixels) from left image
+2. Slide it along the same row in right image
+3. Find position with best match (lowest difference)
+4. Difference in position = disparity
+
+    Left Image          Right Image
+    [patch]             [search along this row -->]
+                        [match found here]
+
+Method 2: Semi-Global Matching (SGM) - Better
+---------------------------------------------
+1. Block matching + smoothness constraints
+2. Enforces that neighboring pixels have similar disparity
+3. Used in OpenCV: cv2.StereoSGBM_create()
+
+Why SGM is better:
+- Block matching: each pixel independent (noisy)
+- SGM: considers neighbors (smooth, accurate)
+
+
+UNCERTAINTY IN STEREO
+---------------------
+Stereo depth is NOT always reliable. Uncertainty is HIGH when:
+
+1. Texture-less regions (flat white wall)
+   - No features to match
+   - Algorithm guesses randomly
+
+2. Repetitive patterns (tiles, bricks)
+   - Multiple possible matches
+   - Algorithm may pick wrong one
+
+3. Occlusions (one camera sees, other doesn't)
+   - Object visible in left but hidden in right
+   - No valid match exists
+
+4. Large depth (far objects)
+   - Small disparity values
+   - Small errors in matching --> large depth errors
+
+How to measure uncertainty:
+- Left-Right consistency check
+- Compute disparity left-to-right AND right-to-left
+- If they disagree --> high uncertainty
+
+
+LEFT-RIGHT CONSISTENCY CHECK
+----------------------------
+1. Compute disparity: left image --> right image (d_lr)
+2. Compute disparity: right image --> left image (d_rl)
+3. For each pixel, check: |d_lr - d_rl| < threshold
+
+If consistent: low uncertainty
+If inconsistent: high uncertainty
+
+    uncertainty = |d_lr(x,y) - d_rl(x - d_lr(x,y), y)|
+
+
+RECTIFICATION
+-------------
+Problem: Stereo matching assumes points lie on the same row (epipolar line)
+Reality: Cameras may be slightly misaligned
+
+Solution: Rectification
+- Warp images so that epipolar lines are horizontal
+- After rectification, matching is 1D search (fast)
+
+In practice: Use OpenCV cv2.stereoRectify()
+
+
+SUMMARY: STEREO DEPTH
+---------------------
+1. Two cameras see the world from different positions
+2. Same point appears at different x-coordinates (disparity)
+3. Depth = (baseline * focal_length) / disparity
+4. Stereo matching finds corresponding points
+5. SGM is better than simple block matching
+6. Uncertainty comes from matching confidence
+7. Left-right consistency check measures uncertainty
+
+
+================================================================================
+                          4. THEORY - 3D MAPPING
+================================================================================
+
+THE GOAL
+--------
+Build a 3D representation of the lunar terrain that includes:
+- Where obstacles are
+- Height at each location
+- Uncertainty (how confident we are)
+
+
+VOXEL GRID
+----------
+A voxel = 3D pixel (volume element)
+
+Divide 3D space into a regular grid of small cubes:
+
+    +---+---+---+---+
+   /   /   /   /   /|
+  +---+---+---+---+ |
+ /   /   /   /   /| +
++---+---+---+---+ |/|
+|   |   |   |   | + |
++---+---+---+---+|/| +
+|   |   |   |   | + |/
++---+---+---+---+|/|/
+|   |XXX|   |   | +/
++---+---+---+---+|/
+|   |   |   |   |/
++---+---+---+---+
+
+XXX = occupied voxel (obstacle)
+
+Parameters:
+- Resolution: size of each voxel (e.g., 0.1m = 10cm)
+- Grid size: number of voxels in x, y, z
+- Origin: world coordinate of grid corner
+
+
+COORDINATE CONVERSION
+---------------------
+World to Voxel:
+    voxel_idx = floor((world_point - origin) / resolution)
+
+Voxel to World:
+    world_point = voxel_idx * resolution + origin
+
+
+DEPTH INTEGRATION
+-----------------
+For each frame:
+1. Get depth map from stereo
+2. Get robot pose from ORB-SLAM3
+3. Back-project depth pixels to 3D points
+4. Transform points to world frame
+5. Update voxel grid
+
+Back-projection:
+    Given: pixel (u, v), depth Z, camera intrinsics (fx, fy, cx, cy)
+
+    X = (u - cx) * Z / fx
+    Y = (v - cy) * Z / fy
+    Z = Z
+
+    Point in camera frame: (X, Y, Z)
+
+Transform to world:
+    Point_world = R * Point_camera + t
+
+    Where R, t come from ORB-SLAM3 pose
+
+
+OCCUPANCY PROBABILITY
+---------------------
+Each voxel stores probability of being occupied.
+
+Problem: Single measurement is noisy
+Solution: Accumulate evidence over multiple observations
+
+Log-odds representation:
+    l = log(p / (1-p))
+
+    Where p = probability of occupied
+
+Update rule:
+    l_new = l_old + l_measurement
+
+    If we see a point in voxel: l_measurement = +0.85 (hit)
+    If ray passes through voxel: l_measurement = -0.4 (miss)
+
+Convert back to probability:
+    p = 1 / (1 + exp(-l))
+
+Why log-odds?
+- Simple addition instead of Bayes rule
+- Numerically stable
+- Can clamp to prevent over-confidence
+
+
+RAYCASTING
+----------
+When we see a point at depth Z, we know:
+- The point itself is OCCUPIED
+- Everything BETWEEN camera and point is FREE
+
+Raycasting marks free space:
+
+    Camera -------- FREE -------- FREE -------- OCCUPIED
+           ray passes through     ray passes    point is
+           these voxels           through       here
+
+
+HEIGHT MAP (2.5D)
+-----------------
+For many applications, full 3D is overkill.
+Height map: store only the height at each (x, y) location.
+
+    height_map[x][y] = average Z of points falling in that cell
+
+Advantages:
+- Much smaller memory
+- Matches LAC scoring requirements
+- Easy to convert to costmap
+
+What we store per cell:
+- height_sum: running sum of heights
+- height_sum_sq: running sum of height^2 (for variance)
+- observation_count: how many points
+- uncertainty: derived from variance + measurement uncertainty
+
+
+UNCERTAINTY PROPAGATION
+-----------------------
+Map uncertainty comes from two sources:
+
+1. Measurement uncertainty (from stereo)
+   - Already computed in stereo depth module
+   - Propagates into voxel
+
+2. Variance from multiple observations
+   - Multiple points land in same voxel
+   - Variance = spread of height values
+
+Combined uncertainty:
+    total_uncertainty = sqrt(measurement_uncertainty^2 + height_variance)
+
+
+SUMMARY: 3D MAPPING
+-------------------
+1. Voxel grid divides 3D space into cubes
+2. Depth integration: back-project depth, transform to world, update voxels
+3. Log-odds for occupancy probability (accumulate evidence)
+4. Raycasting marks free space along rays
+5. Height map is 2.5D simplification (height per x,y cell)
+6. Uncertainty combines measurement noise + observation variance
+
+
+================================================================================
+                            5. THEORY - COSTMAPS
+================================================================================
+
+THE GOAL
+--------
+Convert 3D map into a 2D grid where each cell has a COST.
+Path planner will find path that minimizes total cost.
+
+Low cost = safe to traverse
+High cost = dangerous or impossible
+
+
+CONFIGURATION SPACE
+-------------------
+Workspace: the physical world
+Configuration space (C-space): space of robot configurations
+
+For a point robot: C-space = workspace
+For a real robot: must account for robot's size
+
+Solution: INFLATE obstacles by robot radius
+- If robot center stays outside inflated obstacle, robot is safe
+
+
+COSTMAP LAYERS
+--------------
+Our costmap has multiple layers, each encoding different information:
+
+Layer           What it encodes                    Cost range
+-----           ---------------                    ----------
+Obstacle        Occupied cells from mapping        0 or INFINITY
+Inflation       Distance to obstacles              0 to HIGH
+Uncertainty     Mapping confidence                 0 to MEDIUM
+Shadow          Detected shadow regions            0 to MEDIUM
+
+Total cost = weighted sum of all layers
+
+
+LAYER 1: OBSTACLE LAYER
+-----------------------
+Source: Height map from 3D mapping
+
+How to detect obstacles:
+- Compute height gradient (slope)
+- High gradient = obstacle (can't drive up steep slope)
+
+    gradient_x = height[x+1, y] - height[x, y]
+    gradient_y = height[x, y+1] - height[x, y]
+    gradient_magnitude = sqrt(gradient_x^2 + gradient_y^2)
+
+    if gradient_magnitude > threshold:
+        obstacle = True
+
+Also mark UNKNOWN cells as obstacles:
+- Never observed = don't know what's there = dangerous
+
+
+LAYER 2: INFLATION LAYER
+------------------------
+Purpose: Keep robot away from obstacles (safety margin)
+
+How it works:
+1. Compute distance transform from obstacles
+2. Cost decreases with distance
+
+    distance = distance_transform(obstacle_map)
+    inflation_cost = max(0, (inflation_radius - distance) / inflation_radius)
+
+Parameters:
+- Robot radius: physical size of robot
+- Inflation radius: how far to inflate (robot_radius + safety_margin)
+
+
+LAYER 3: UNCERTAINTY LAYER
+--------------------------
+Purpose: Avoid regions where mapping is uncertain
+
+Source: Uncertainty from stereo depth + mapping
+
+    uncertainty_cost = uncertainty_map * weight
+
+Why this matters:
+- High uncertainty = might be obstacle we missed
+- Robot should prefer well-mapped regions
+- This is what makes our system "perception-aware"
+
+
+LAYER 4: SHADOW LAYER
+---------------------
+Purpose: Avoid shadow regions (lunar-specific)
+
+Why shadows are bad:
+- No texture in shadows (stereo fails)
+- ORB-SLAM3 loses features
+- Very high uncertainty
+
+Detection:
+- Threshold on image brightness
+- Low brightness = shadow
+
+    if image_brightness < threshold:
+        shadow_cost = HIGH
+
+
+COMBINING LAYERS
+----------------
+Total cost at cell (x, y):
+
+    cost(x, y) = w1 * obstacle(x, y)
+               + w2 * inflation(x, y)
+               + w3 * uncertainty(x, y)
+               + w4 * shadow(x, y)
+
+Weights control trade-offs:
+- High w1: strictly avoid obstacles
+- High w3: very cautious about uncertainty
+- Tune based on how risk-averse you want robot to be
+
+
+UNKNOWN VS FREE
+---------------
+Traditional costmap:
+    unknown cell --> cost = 0 (assume free)
+
+Our perception-aware costmap:
+    unknown cell --> cost = HIGH (assume dangerous)
+
+This is a fundamental difference:
+- Traditional: optimistic (unknown is safe until proven dangerous)
+- Ours: pessimistic (unknown is dangerous until proven safe)
+
+
+SUMMARY: COSTMAPS
+-----------------
+1. Costmap converts map to planning-ready format
+2. Multiple layers encode different information
+3. Obstacle layer from height gradients
+4. Inflation layer for robot size safety margin
+5. Uncertainty layer makes us perception-aware
+6. Shadow layer handles lunar lighting
+7. Unknown cells treated as dangerous (not free)
+
+
+================================================================================
+                          6. THEORY - PATH PLANNING
+================================================================================
+
+THE GOAL
+--------
+Find a path from start to goal that:
+- Avoids obstacles
+- Minimizes total cost
+- Is smooth enough to follow
+
+
+A* ALGORITHM
+------------
+A* finds the optimal path in a graph.
+
+Key idea: Explore promising nodes first
+
+For each node, compute:
+    f(n) = g(n) + h(n)
+
+    Where:
+    g(n) = actual cost from start to n
+    h(n) = estimated cost from n to goal (heuristic)
+    f(n) = estimated total cost through n
+
+Algorithm:
+1. Start with start node in OPEN set
+2. Loop:
+   a. Pick node with lowest f(n) from OPEN
+   b. If it's the goal, done!
+   c. Move it to CLOSED set
+   d. For each neighbor:
+      - Calculate g, h, f
+      - If not in CLOSED and (not in OPEN or found better path):
+        - Add/update in OPEN with new f value
+3. If OPEN is empty, no path exists
+
+Pseudocode:
+    open_set = PriorityQueue()
+    open_set.add(start, f=h(start))
+    g_score[start] = 0
+
+    while open_set not empty:
+        current = open_set.pop_lowest_f()
+
+        if current == goal:
+            return reconstruct_path()
+
+        for neighbor in get_neighbors(current):
+            tentative_g = g_score[current] + cost(current, neighbor)
+
+            if tentative_g < g_score[neighbor]:
+                g_score[neighbor] = tentative_g
+                f_score = tentative_g + h(neighbor)
+                open_set.add_or_update(neighbor, f_score)
+
+    return NO_PATH
+
+
+HEURISTICS
+----------
+Heuristic h(n) estimates cost from n to goal.
+
+Requirements:
+- Admissible: never overestimates (h(n) <= actual cost)
+- Consistent: h(n) <= cost(n, m) + h(m) for any edge n->m
+
+Common heuristics for grid:
+- Euclidean distance: sqrt((x2-x1)^2 + (y2-y1)^2)
+- Manhattan distance: |x2-x1| + |y2-y1|
+
+Euclidean is admissible if we can move in any direction.
+
+
+NEIGHBORS AND COSTS
+-------------------
+For 8-connected grid:
+
+    +---+---+---+
+    |NW | N |NE |
+    +---+---+---+
+    | W | X | E |
+    +---+---+---+
+    |SW | S |SE |
+    +---+---+---+
+
+Cardinal neighbors (N, S, E, W): cost = 1.0
+Diagonal neighbors (NE, NW, SE, SW): cost = 1.414 (sqrt(2))
+
+With costmap, add cell cost:
+    total_cost = movement_cost + costmap[neighbor]
+
+
+WHY A* IS OPTIMAL
+-----------------
+If heuristic is admissible, A* guarantees:
+- It will find a path if one exists
+- The path found is optimal (minimum cost)
+
+Proof sketch:
+- A* expands nodes in order of f = g + h
+- When we reach goal, g(goal) = actual path cost
+- Any unexpanded node n has f(n) >= f(goal)
+- Since h is admissible, actual cost through n >= f(n) >= f(goal)
+- So no unexpanded node can give better path
+
+
+COVERAGE PLANNING
+-----------------
+Goal: Explore the entire area efficiently
+
+Simple approach: Frontier-based exploration
+1. Find "frontier" cells (boundary between known and unknown)
+2. Pick nearest/best frontier
+3. Plan path to it
+4. Execute, map along the way
+5. Repeat
+
+Better approach: Information gain
+- Each frontier has potential information gain
+- Pick frontier that maximizes (information / distance)
+
+
+PATH SMOOTHING
+--------------
+A* produces paths with sharp corners (grid-aligned).
+Robot can't turn instantly, so we need smoothing.
+
+Simple smoothing (gradient descent):
+    for each iteration:
+        for each point (except start and end):
+            move point toward average of neighbors
+            move point toward original position (to stay close to original)
+
+    smoothed[i] += alpha * (original[i] - smoothed[i])
+                 + beta * ((smoothed[i-1] + smoothed[i+1])/2 - smoothed[i])
+
+
+TRAJECTORY GENERATION
+---------------------
+Path = sequence of waypoints
+Trajectory = path + time information
+
+For each segment:
+    distance = length of segment
+    time = distance / max_velocity
+    velocity = direction * max_velocity
+
+Output: list of (time, x, y, vx, vy)
+
+
+SUMMARY: PATH PLANNING
+----------------------
+1. A* finds optimal path using f = g + h
+2. Heuristic must be admissible (never overestimate)
+3. Our cost = movement + costmap (includes uncertainty)
+4. Coverage planning explores unknown areas
+5. Path smoothing removes sharp corners
+6. Trajectory adds timing for control
+
+
+================================================================================
+                            7. THEORY - CONTROL
+================================================================================
+
+THE GOAL
+--------
+Make the robot follow the planned path.
+
+Input: Trajectory (time, x, y, vx, vy)
+Output: Velocity commands (linear_vel, angular_vel)
+
+
+PURE PURSUIT
+------------
+Simple and effective trajectory following algorithm.
+
+Idea: Pick a "lookahead" point on the path and steer toward it.
+
+    Robot -------- Lookahead Point
+              \
+               \
+                (steer this direction)
+
+Algorithm:
+1. Find point on path at lookahead_distance ahead
+2. Compute curvature to reach that point
+3. Set angular velocity based on curvature
+
+    curvature = 2 * lateral_offset / lookahead_distance^2
+    angular_vel = linear_vel * curvature
+
+Parameters:
+- lookahead_distance: how far ahead to look
+  - Too small: jerky motion
+  - Too large: cuts corners
+
+Why it works:
+- Always steers toward path
+- Self-correcting (if we drift, lateral_offset increases, steering increases)
+
+
+PID CONTROL
+-----------
+General-purpose feedback controller.
+
+    error = desired - actual
+
+    P (Proportional): correction = Kp * error
+    I (Integral):     correction = Ki * integral(error)
+    D (Derivative):   correction = Kd * derivative(error)
+
+    output = Kp * error + Ki * integral + Kd * derivative
+
+What each term does:
+- P: Reacts to current error (main correction)
+- I: Fixes steady-state error (accumulated error over time)
+- D: Dampens oscillations (reacts to rate of change)
+
+For trajectory following:
+- Compute heading error (desired heading - actual heading)
+- Apply PID to get angular velocity correction
+
+
+VELOCITY COMMANDS
+-----------------
+Differential drive robot (like lunar rover):
+- Linear velocity: how fast to move forward/backward
+- Angular velocity: how fast to rotate
+
+    cmd_vel.linear = desired_speed (m/s)
+    cmd_vel.angular = steering_correction (rad/s)
+
+
+CLOSED-LOOP CONTROL
+-------------------
+Open-loop: send commands, hope for the best
+Closed-loop: measure result, adjust commands
+
+Our system is closed-loop:
+    Plan path --> Send velocity --> Measure pose --> Compute error --> Adjust
+
+This handles:
+- Wheel slip
+- Uneven terrain
+- Disturbances
+
+
+SUMMARY: CONTROL
+----------------
+1. Pure pursuit: steer toward lookahead point on path
+2. PID: general feedback control (P, I, D terms)
+3. Output: linear and angular velocity commands
+4. Closed-loop: continuously measure and correct
+
+
+================================================================================
+                    8. IMPLEMENTATION GUIDE (WEEK BY WEEK)
+================================================================================
+
+WEEK 1: FOUNDATION
+------------------
+Goals:
+- Get CARLA + LAC running
+- Understand sensor interfaces
+- Record test data
+
+Tasks:
+Day 1-2: Set up environment
+    - Run ./RunLunarSimulator.sh
+    - Run ./RunLeaderboard.sh with human_agent.py
+    - Drive around, understand the environment
+
+Day 3-4: Study LAC codebase
+    - Read agents/human_agent.py
+    - Read Leaderboard/leaderboard/agents/sensor_interface.py
+    - Understand what sensors are available
+
+Day 5-6: Verify ORB-SLAM3
+    - Run your existing ORB-SLAM3 pipeline
+    - Verify trajectory output
+    - Compare with ground truth
+
+Day 7: Record test data
+    - Create data recording script
+    - Record 3 missions for offline testing
+
+Deliverables:
+[ ] CARLA + LAC running
+[ ] Understand sensor data format
+[ ] ORB-SLAM3 producing trajectories
+[ ] Recorded test missions
+
+
+WEEK 2: STEREO DEPTH
+--------------------
+Goals:
+- Implement stereo matching
+- Compute depth with uncertainty
+- Integrate with ORB-SLAM3 pose
+
+Tasks:
+Day 8-9: Implement stereo matching
+    - File: depth/stereo_matcher.py
+    - Use OpenCV StereoSGBM
+    - Compute disparity map
+
+Day 10-11: Implement uncertainty
+    - File: depth/uncertainty.py
+    - Left-right consistency check
+    - Output uncertainty map
+
+Day 12-13: Test and visualize
+    - Visualize depth maps
+    - Visualize uncertainty
+    - Compare with ground truth if available
+
+Day 14: Integration
+    - Combine depth with ORB-SLAM3 pose
+    - Output: (pose, depth, uncertainty) per frame
+
+Deliverables:
+[ ] stereo_matcher.py working
+[ ] uncertainty.py working
+[ ] Depth visualization
+[ ] Integrated with ORB-SLAM3
+
+
+WEEK 3: 3D MAPPING
+------------------
+Goals:
+- Build voxel grid
+- Implement depth integration
+- Extract height map
+
+Tasks:
+Day 15-16: Voxel grid structure
+    - File: mapping/voxel_grid.py
+    - Initialize grid
+    - World <-> voxel coordinate conversion
+
+Day 17-18: Depth integration
+    - Back-project depth to 3D points
+    - Transform to world frame using pose
+    - Update voxel occupancy
+
+Day 19-20: Height map extraction
+    - File: mapping/height_map.py
+    - Compute mean height per (x,y) cell
+    - Compute uncertainty per cell
+
+Day 21: Test and visualize
+    - 3D visualization of voxel grid
+    - 2D visualization of height map
+    - Test on recorded missions
+
+Deliverables:
+[ ] voxel_grid.py working
+[ ] height_map.py working
+[ ] 3D map visualization
+[ ] Height map matches terrain
+
+
+WEEK 4: COSTMAP
+---------------
+Goals:
+- Implement costmap layers
+- Combine into unified costmap
+- Visualize costs
+
+Tasks:
+Day 22-23: Obstacle layer
+    - File: costmap/obstacle_layer.py
+    - Compute from height gradients
+    - Mark unknown as obstacle
+
+Day 24-25: Inflation + Uncertainty layers
+    - File: costmap/uncertainty_layer.py
+    - Distance transform for inflation
+    - Uncertainty from mapping
+
+Day 26-27: Shadow layer
+    - File: costmap/shadow_layer.py
+    - Detect shadows from image brightness
+    - Add shadow cost
+
+Day 28: Combine and visualize
+    - File: costmap/costmap.py
+    - Weighted combination of layers
+    - Visualize total cost
+
+Deliverables:
+[ ] All costmap layers working
+[ ] Combined costmap
+[ ] Visualization showing different costs
+
+
+WEEK 5: PATH PLANNING
+---------------------
+Goals:
+- Implement A* planner
+- Implement path smoothing
+- Test planning on costmap
+
+Tasks:
+Day 29-30: A* implementation
+    - File: planning/astar.py
+    - Priority queue-based search
+    - 8-connected grid
+
+Day 31-32: Path smoothing
+    - File: planning/trajectory.py
+    - Gradient descent smoothing
+    - Trajectory generation (add time)
+
+Day 33-34: Coverage planning
+    - File: planning/coverage_planner.py
+    - Find frontiers
+    - Select next exploration target
+
+Day 35: Test planning
+    - Plan paths on recorded maps
+    - Visualize paths on costmap
+    - Verify paths avoid high-cost regions
+
+Deliverables:
+[ ] A* planner working
+[ ] Path smoothing working
+[ ] Coverage planner working
+[ ] Paths visualization
+
+
+WEEK 6: CONTROL + INTEGRATION
+-----------------------------
+Goals:
+- Implement trajectory controller
+- Connect to CARLA
+- End-to-end test
+
+Tasks:
+Day 36-37: Controller
+    - File: control/controller.py
+    - Pure pursuit implementation
+    - Velocity command output
+
+Day 38-39: CARLA interface
+    - Connect to LAC agent interface
+    - Send velocity commands
+    - Receive sensor data
+
+Day 40-42: Full integration
+    - sensors -> SLAM -> mapping -> costmap -> planner -> control
+    - End-to-end test in CARLA
+    - Debug integration issues
+
+Deliverables:
+[ ] Controller working
+[ ] CARLA interface working
+[ ] End-to-end system running
+
+
+WEEK 7: TESTING + DEBUGGING
+---------------------------
+Goals:
+- Test on all LAC missions
+- Handle edge cases
+- Performance tuning
+
+Tasks:
+Day 43-45: Mission testing
+    - Run on all 10 training missions
+    - Record success/failure
+    - Identify failure modes
+
+Day 46-47: Edge case handling
+    - SLAM tracking loss recovery
+    - Stuck detection and recovery
+    - Shadow handling
+
+Day 48-49: Performance tuning
+    - Tune costmap weights
+    - Tune planner parameters
+    - Optimize for speed
+
+Deliverables:
+[ ] Tested on all missions
+[ ] Edge cases handled
+[ ] Tuned parameters
+
+
+WEEK 8: POLISH + DEMO
+---------------------
+Goals:
+- Visualization
+- Documentation
+- Demo video
+
+Tasks:
+Day 50-51: Visualization
+    - File: visualization/visualizer.py
+    - Real-time 3D display
+    - Costmap overlay
+    - Path display
+
+Day 52-53: Demo video
+    - Record autonomous runs
+    - Show different scenarios
+    - Highlight perception-aware behavior
+
+Day 54-55: Documentation
+    - Complete README.md
+    - Code comments
+    - Architecture diagrams
+
+Day 56: Final
+    - Final testing
+    - Push to GitHub
+    - Done!
+
+Deliverables:
+[ ] Visualization working
+[ ] Demo video recorded
+[ ] Documentation complete
+[ ] GitHub updated
+
+
+================================================================================
+                           9. CODE STRUCTURE
+================================================================================
+
+lunar_navigation/
+|
++-- sensors/
+|   +-- __init__.py
+|   +-- stereo_camera.py      # Get stereo images from CARLA
+|   +-- imu.py                # Get IMU data from CARLA
+|
++-- depth/
+|   +-- __init__.py
+|   +-- stereo_matcher.py     # Compute depth from stereo
+|   +-- uncertainty.py        # Compute depth uncertainty
+|
++-- mapping/
+|   +-- __init__.py
+|   +-- voxel_grid.py         # 3D voxel representation
+|   +-- height_map.py         # 2.5D height map
+|
++-- costmap/
+|   +-- __init__.py
+|   +-- costmap.py            # Main costmap combining layers
+|   +-- obstacle_layer.py     # Obstacles from mapping
+|   +-- uncertainty_layer.py  # Uncertainty costs
+|   +-- shadow_layer.py       # Shadow detection
+|
++-- planning/
+|   +-- __init__.py
+|   +-- astar.py              # A* path planner
+|   +-- coverage_planner.py   # Exploration planning
+|   +-- trajectory.py         # Path smoothing and trajectory
+|
++-- control/
+|   +-- __init__.py
+|   +-- controller.py         # Trajectory following
+|
++-- visualization/
+|   +-- __init__.py
+|   +-- visualizer.py         # Real-time visualization
+|
++-- scripts/
+|   +-- run_autonomous.py     # Main entry point
+|   +-- record_data.py        # Record data from simulator
+|
++-- config/
+|   +-- params.yaml           # All parameters
+|
++-- tests/
+|   +-- test_slam.py
+|   +-- test_mapping.py
+|   +-- test_costmap.py
+|   +-- test_planning.py
+|
++-- __init__.py
++-- requirements.txt
++-- README.md
++-- PROJECT_GUIDE.txt         # This file
+
+
+================================================================================
+                        10. INTERVIEW PREPARATION
+================================================================================
+
+QUESTIONS YOU SHOULD BE ABLE TO ANSWER
+--------------------------------------
+
+STEREO VISION:
+
+Q: How does stereo depth work?
+A: Two cameras see the same point at different pixel locations. The difference
+   (disparity) is inversely proportional to depth. depth = baseline * f / d
+
+Q: Why does stereo fail on texture-less surfaces?
+A: Stereo matching needs distinctive features to find correspondences.
+   Texture-less surfaces have no features, so matching fails or is random.
+
+Q: How do you measure stereo uncertainty?
+A: Left-right consistency check. Compute disparity both directions and
+   compare. Large disagreement = high uncertainty.
+
+
+MAPPING:
+
+Q: What is a voxel grid?
+A: 3D grid of cubes. Each voxel stores occupancy probability and other info.
+   Like pixels but in 3D.
+
+Q: How do you handle noisy depth measurements?
+A: Log-odds representation. Each measurement updates log-odds rather than
+   replacing. Evidence accumulates over time. Single bad measurement doesn't
+   corrupt the map.
+
+Q: What's a height map and why use it?
+A: 2D array storing height at each (x,y). Simpler than full 3D, sufficient
+   for ground robots, matches competition requirements.
+
+
+COSTMAPS:
+
+Q: What is a costmap?
+A: 2D grid where each cell has a cost. Low cost = safe to traverse.
+   High cost = dangerous. Path planner minimizes total cost.
+
+Q: Why inflate obstacles?
+A: Robot has physical size. If we inflate obstacles by robot radius, then
+   path planner only needs to keep robot CENTER away from inflated obstacles.
+
+Q: What makes your system perception-aware?
+A: Costmap includes UNCERTAINTY layer. High uncertainty = high cost.
+   Robot avoids regions where mapping is unreliable, not just obstacles.
+
+
+PATH PLANNING:
+
+Q: How does A* work?
+A: Priority queue search. Expand node with lowest f = g + h.
+   g = cost so far, h = estimated cost to goal.
+   Guarantees optimal path if heuristic is admissible.
+
+Q: What does admissible heuristic mean?
+A: Never overestimates true cost. This guarantees A* finds optimal path.
+   Example: Euclidean distance is admissible (straight line is shortest).
+
+Q: How is your planner different from standard A*?
+A: Cost function includes uncertainty. Standard A* uses only distance/obstacle.
+   Our A* also penalizes uncertain regions.
+
+
+CONTROL:
+
+Q: What is pure pursuit?
+A: Trajectory following algorithm. Look ahead on path, steer toward that point.
+   Curvature proportional to lateral offset. Self-correcting.
+
+Q: What do P, I, D mean in PID?
+A: P (Proportional): correction proportional to current error
+   I (Integral): fixes steady-state error, based on accumulated error
+   D (Derivative): dampens oscillations, based on rate of change
+
+
+SYSTEM:
+
+Q: Walk me through your system end-to-end.
+A: 1. Stereo cameras capture images
+   2. ORB-SLAM3 estimates robot pose
+   3. Stereo matching computes depth + uncertainty
+   4. Depth integrated into voxel grid using pose
+   5. Height map extracted from voxels
+   6. Costmap computed (obstacles + inflation + uncertainty + shadows)
+   7. A* plans path on costmap
+   8. Pure pursuit follows path
+   9. Velocity commands sent to robot
+   10. Loop back to step 1
+
+Q: What happens if SLAM loses tracking?
+A: Detection: tracking failure flag from ORB-SLAM3, or pose jump detection.
+   Response: stop moving, possibly backtrack to last known good pose,
+   wait for re-localization.
+
+Q: Why is this better than standard navigation?
+A: Standard: unknown space is free, robot drives into unmapped areas blindly.
+   Ours: unknown space is costly, robot explores cautiously, avoids guessing.
+
+
+YOUR PROJECT STORY (FOR INTERVIEWS)
+-----------------------------------
+"For the Lunar Autonomy Challenge, I built an autonomous navigation system
+for a lunar rover. The interesting challenge was that on the Moon, there's
+no GPS, extreme shadows, and texture-less terrain where normal approaches fail.
+
+My system uses ORB-SLAM3 for localization and stereo cameras for dense depth.
+The key innovation is a perception-aware costmap that encodes not just where
+obstacles are, but how confident the robot is about its perception.
+
+For example, in shadow regions, stereo depth is unreliable because there's
+no texture. My costmap marks these as high-cost, so the planner avoids them.
+Similarly, unknown regions are treated as dangerous rather than free.
+
+The result is a robot that knows what it doesn't know and plans accordingly.
+It explores cautiously, builds confident maps, and only drives where it's
+sure of the terrain."
+
+
+================================================================================
+                        11. REFERENCES & RESOURCES
+================================================================================
+
+BOOKS
+-----
+1. Multiple View Geometry (Hartley & Zisserman)
+   - Chapters 9-11: Stereo, reconstruction
+   - The "bible" of 3D vision
+
+2. Probabilistic Robotics (Thrun, Burgard, Fox)
+   - Chapters 2-4: Probability, sensors
+   - Chapter 9: Occupancy grids
+   - Chapter 13: Path planning
+
+3. Planning Algorithms (LaValle)
+   - Free online: http://planning.cs.uiuc.edu/
+   - Chapters 1-5: Motion planning fundamentals
+
+
+PAPERS
+------
+1. ORB-SLAM3 (Campos et al., 2021)
+   - Your SLAM system
+   - Read for understanding what it outputs
+
+2. DROID-SLAM (Teed & Deng, 2021)
+   - Neural SLAM (for reference, not using)
+   - Good to know for interviews
+
+3. Costmap_2D (ROS documentation)
+   - Standard costmap implementation
+   - http://wiki.ros.org/costmap_2d
+
+
+VIDEOS
+------
+1. Cyrill Stachniss YouTube
+   - SLAM course: https://youtube.com/playlist?list=PLgnQpQtFTOGQrZ4O5QzbIHgl3b1JHimN_
+   - Best free SLAM lectures
+
+2. First Principles of Computer Vision
+   - Stereo vision: https://youtube.com/playlist?list=PL2zRqk16wsdoCCLpou-dGo7QQNks1Ppzo
+
+
+CODE REFERENCES
+---------------
+1. OpenCV StereoSGBM
+   - https://docs.opencv.org/4.x/d2/d85/classcv_1_1StereoSGBM.html
+
+2. Open3D (for visualization)
+   - https://www.open3d.org/docs/release/
+
+3. CARLA Documentation
+   - https://carla.readthedocs.io/
+
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================
+
+Good luck! Start with Week 1, Day 1. One step at a time.
+
+Remember: The goal is not just to build working code, but to UNDERSTAND
+every component well enough to explain it in an interview.
+
+When in doubt, go back to first principles: What problem does this solve?
+How does the math work? Why this approach over alternatives?
+
