@@ -1,0 +1,3104 @@
+================================================================================
+================================================================================
+================================================================================
+
+     THE COMPLETE GUIDE TO AUTONOMOUS LUNAR ROVER NAVIGATION
+
+     From Absolute Fundamentals to Full System Understanding
+
+     "The Bible / Bhagavad Gita of this Repository"
+
+================================================================================
+================================================================================
+================================================================================
+
+Author: Vivek Mattam
+Repository: Lunar Autonomy Challenge Navigation System
+Date: January 2026
+
+This document is designed for someone with ZERO prior knowledge of robotics,
+computer vision, autonomy, or space systems. Every concept is explained from
+first principles using real-world analogies.
+
+================================================================================
+                            TABLE OF CONTENTS
+================================================================================
+
+PART I: FOUNDATIONS - Understanding the Basics
+    Chapter 1: What is a Robot?
+    Chapter 2: What is Autonomy?
+    Chapter 3: What is the Lunar Autonomy Challenge?
+    Chapter 4: How Does a Robot "See"?
+    Chapter 5: The Fundamental Problem - "Where Am I?"
+
+PART II: PERCEPTION - How the Robot Sees and Understands
+    Chapter 6: Cameras and Images
+    Chapter 7: Stereo Vision - Seeing Depth with Two Cameras
+    Chapter 8: FoundationStereo - Deep Learning for Better Depth
+    Chapter 9: ORB-SLAM3 - Tracking Where You Are
+    Chapter 10: Uncertainty - Knowing What You Don't Know
+
+PART III: MAPPING - Building a Model of the World
+    Chapter 11: What is a Map?
+    Chapter 12: Voxel Grids - 3D Lego Blocks
+    Chapter 13: Height Maps - A Simpler View
+    Chapter 14: Uncertainty in Maps
+
+PART IV: PLANNING - Deciding Where to Go
+    Chapter 15: What is Path Planning?
+    Chapter 16: Costmaps - The Cost of Every Location
+    Chapter 17: A* Algorithm - Finding the Best Path
+    Chapter 18: Perception-Aware Planning - The Key Innovation
+
+PART V: CONTROL - Making the Robot Move
+    Chapter 19: From Plan to Motion
+    Chapter 20: Trajectory Following
+    Chapter 21: Closing the Loop
+
+PART VI: THE COMPLETE SYSTEM
+    Chapter 22: How Everything Connects
+    Chapter 23: The Code Structure
+    Chapter 24: Running the System
+
+PART VII: GOING DEEPER
+    Chapter 25: The Mathematics Behind It All
+    Chapter 26: Interview Questions and Answers
+    Chapter 27: Next Steps and Resources
+
+================================================================================
+================================================================================
+
+                    PART I: FOUNDATIONS - UNDERSTANDING THE BASICS
+
+================================================================================
+================================================================================
+
+
+================================================================================
+                    CHAPTER 1: WHAT IS A ROBOT?
+================================================================================
+
+THE SIMPLEST DEFINITION
+-----------------------
+A robot is a machine that can:
+1. Sense the world around it
+2. Think about what to do
+3. Act on the world
+
+That's it. Sense, Think, Act.
+
+REAL-WORLD ANALOGY: YOU ARE A ROBOT
+-----------------------------------
+When you walk across a room:
+
+1. SENSE: Your eyes see the furniture, your ears hear sounds, your feet
+   feel the floor beneath you.
+
+2. THINK: Your brain processes this information and decides "I should walk
+   around that table, not through it."
+
+3. ACT: Your legs move to execute the plan your brain created.
+
+Congratulations, you just performed autonomous navigation! A robot does
+the same thing, just with cameras instead of eyes, computers instead of
+brains, and motors instead of muscles.
+
+THE SENSE-THINK-ACT CYCLE
+-------------------------
+
+    +-------------+
+    |             |
+    |    SENSE    | <---- Cameras, IMU (motion sensor), etc.
+    |             |
+    +------+------+
+           |
+           v
+    +------+------+
+    |             |
+    |    THINK    | <---- Computer processing
+    |             |
+    +------+------+
+           |
+           v
+    +------+------+
+    |             |
+    |     ACT     | <---- Motors, wheels
+    |             |
+    +------+------+
+           |
+           v
+    (World changes, cycle repeats)
+
+This cycle runs continuously - many times per second. The robot is always
+sensing, always thinking, always acting.
+
+WHY IS THIS HARD FOR ROBOTS?
+----------------------------
+For humans, this is effortless. We've been doing it since we were babies.
+But for robots, every part is incredibly difficult:
+
+SENSING is hard because:
+- Cameras see pixels, not objects
+- The world is complex and unpredictable
+- Sensors are noisy and imperfect
+
+THINKING is hard because:
+- Computers don't "understand" - they just process numbers
+- The world has infinite possibilities
+- Decisions must be made in milliseconds
+
+ACTING is hard because:
+- Motors aren't perfectly precise
+- The environment might change
+- Actions have consequences
+
+THE LUNAR ROVER IN THIS PROJECT
+-------------------------------
+Our lunar rover has:
+
+SENSORS:
+- 2 cameras (stereo pair) - to see the lunar surface
+- IMU (Inertial Measurement Unit) - to feel acceleration and rotation
+- Battery sensor - to know remaining power
+
+COMPUTER:
+- Runs algorithms to process camera images
+- Determines where the rover is
+- Plans paths to explore
+
+ACTUATORS:
+- Wheels to move forward/backward
+- Steering to turn left/right
+
+
+================================================================================
+                    CHAPTER 2: WHAT IS AUTONOMY?
+================================================================================
+
+THE SPECTRUM OF ROBOT CONTROL
+-----------------------------
+Robots can be controlled in different ways:
+
+LEVEL 0: FULLY MANUAL (Remote Control)
+    - Human controls every movement
+    - Like playing a video game
+    - Example: RC car, surgical robots
+
+LEVEL 1: ASSISTED
+    - Human gives high-level commands
+    - Robot handles details
+    - Example: "Go to the kitchen" - robot figures out how
+
+LEVEL 2: SUPERVISED
+    - Robot does most things itself
+    - Human monitors and intervenes if needed
+    - Example: Modern autopilot systems
+
+LEVEL 3: FULL AUTONOMY
+    - Robot operates completely independently
+    - No human intervention possible
+    - Example: Mars rovers (15-minute signal delay makes remote control impossible)
+
+WHY FULL AUTONOMY FOR THE MOON?
+-------------------------------
+The Moon is about 384,400 km from Earth. Radio signals travel at the speed
+of light, so:
+
+    Round-trip communication delay = 2.5 seconds
+
+This might not sound like much, but imagine:
+- You're driving a car
+- Every time you turn the steering wheel, it takes 2.5 seconds to respond
+- You'd crash immediately!
+
+For a rover on the Moon:
+- It must react to obstacles instantly
+- It can't wait 2.5 seconds for instructions
+- Therefore, it MUST be autonomous
+
+For Mars (much farther away):
+- Round-trip delay = 4 to 24 MINUTES
+- Remote control is completely impossible
+- Full autonomy is the only option
+
+WHAT AUTONOMY REALLY MEANS
+--------------------------
+An autonomous robot must be able to answer these questions BY ITSELF:
+
+1. WHERE AM I?
+   "I am 5 meters north and 3 meters east of where I started"
+   --> This is called LOCALIZATION
+
+2. WHAT'S AROUND ME?
+   "There's a rock 2 meters ahead, flat ground to my left"
+   --> This is called MAPPING or PERCEPTION
+
+3. WHERE SHOULD I GO?
+   "I should explore that unvisited area to the northeast"
+   --> This is called PLANNING
+
+4. HOW DO I GET THERE?
+   "I'll turn left 30 degrees, then drive forward 10 meters"
+   --> This is called PATH PLANNING
+
+5. HOW DO I EXECUTE THIS?
+   "I'll send these specific motor commands"
+   --> This is called CONTROL
+
+This project builds a system that answers ALL of these questions
+automatically, with no human input.
+
+
+================================================================================
+            CHAPTER 3: WHAT IS THE LUNAR AUTONOMY CHALLENGE?
+================================================================================
+
+THE CONTEXT: HUMANITY IS RETURNING TO THE MOON
+----------------------------------------------
+NASA's Artemis program aims to land humans on the Moon again, but this time
+to stay. Before astronauts arrive, we need robotic rovers to:
+
+1. Survey the landing site
+2. Find resources (water ice)
+3. Prepare infrastructure
+4. Map dangerous terrain
+
+The Lunar Autonomy Challenge is a competition to develop autonomous
+navigation systems for these robotic missions.
+
+WHAT THE CHALLENGE ASKS YOU TO DO
+---------------------------------
+You are given:
+- A lunar rover with cameras and sensors
+- A simulated lunar environment (using CARLA simulator)
+- A starting position near a "lander" (the spacecraft that brought you)
+
+You must:
+1. Explore the surrounding terrain AUTONOMOUSLY
+2. Build an accurate MAP of the surface
+3. DETECT and LOCATE rocks
+4. RETURN to the lander periodically to recharge
+5. Maximize your score within time and power limits
+
+THE SCORING SYSTEM
+------------------
+Your autonomous system is judged on:
+
++--------------------+--------+-----------------------------------------------+
+| Metric             | Points | What it measures                              |
++--------------------+--------+-----------------------------------------------+
+| Geometric Mapping  |  300   | Accuracy of your height map (within 5cm)      |
+| Rock Detection     |  300   | Finding and locating rocks                    |
+| Mapping Speed      |  250   | How efficiently you explore (cells/second)    |
+| Fiducial Detection |  150   | Detecting AprilTag markers on the lander      |
++--------------------+--------+-----------------------------------------------+
+| TOTAL              | 1000   |                                               |
++--------------------+--------+-----------------------------------------------+
+
+THE ENVIRONMENT
+---------------
+The simulated lunar environment has:
+
+TERRAIN:
+- Uneven ground with craters and hills
+- Height variations you need to map
+- Rocks of various sizes scattered around
+
+LIGHTING:
+- Harsh sunlight from one direction
+- Deep, sharp shadows (no atmosphere to scatter light)
+- Very high contrast between lit and shadowed areas
+
+CHALLENGES:
+- No GPS (must figure out position from cameras alone)
+- Limited battery (must return to lander to recharge)
+- Communication delay (must be fully autonomous)
+- Texture-less surfaces (hard for computer vision)
+
+THE HARDWARE (SIMULATED)
+------------------------
+The simulated lunar rover has:
+
+STEREO CAMERAS:
+    Two cameras, 16.2 cm apart
+    640 x 480 pixel resolution
+    Pointing forward and slightly down
+
+    Why two cameras? So we can measure DEPTH (explained in Chapter 7)
+
+IMU (Inertial Measurement Unit):
+    Accelerometer: measures how fast you're speeding up/slowing down
+    Gyroscope: measures how fast you're rotating
+
+    Why needed? Helps track movement between camera frames
+
+WHEELS:
+    Four wheels with independent motors
+    Can move forward, backward, and turn
+
+    Controlled by: linear velocity (forward/back) and angular velocity (turning)
+
+HOW THIS REPOSITORY FITS IN
+---------------------------
+This repository provides:
+
+1. LAC-main/
+   The official Lunar Autonomy Challenge framework
+   - Connects to the CARLA simulator
+   - Provides sensor data interfaces
+   - Handles scoring and evaluation
+
+2. ORB_SLAM3-master/
+   A state-of-the-art visual SLAM system
+   - Tracks the rover's position using camera images
+   - Modified to work with lunar rover cameras
+   - Enhanced with FoundationStereo for better depth
+
+3. lunar_navigation/
+   YOUR autonomous navigation system
+   - Takes sensor data as input
+   - Builds maps of the terrain
+   - Plans paths to explore
+   - Controls the rover to execute plans
+
+
+================================================================================
+                    CHAPTER 4: HOW DOES A ROBOT "SEE"?
+================================================================================
+
+THE FUNDAMENTAL DIFFERENCE: HUMAN VS ROBOT VISION
+-------------------------------------------------
+When you look at a chair, you immediately know:
+- It's a chair
+- It's about 1 meter away
+- You could sit on it
+- It's brown and made of wood
+
+When a camera "looks" at a chair, it sees:
+- A grid of numbers (pixel values)
+- No concept of "chair"
+- No concept of "distance"
+- Just brightness values at each pixel
+
+WHAT A CAMERA ACTUALLY PRODUCES
+-------------------------------
+A camera turns light into numbers.
+
+A 640x480 camera produces a grid of 640 x 480 = 307,200 numbers.
+
+Each number represents the brightness at one point:
+- 0 = completely black
+- 255 = completely white
+- Values in between = shades of gray
+
+For a color camera, each point has THREE numbers (Red, Green, Blue).
+
+EXAMPLE:
+    What you see: A white rock on gray ground
+
+    What the camera produces:
+
+    [ 127, 127, 127, 127, 127, 127, 127 ]
+    [ 127, 127, 255, 255, 255, 127, 127 ]    <-- 255 = bright white (rock)
+    [ 127, 127, 255, 255, 255, 127, 127 ]
+    [ 127, 127, 127, 127, 127, 127, 127 ]
+
+    Just numbers! The computer doesn't "know" this is a rock.
+
+THE COMPUTER VISION CHALLENGE
+-----------------------------
+Computer vision is the field of teaching computers to "understand" images.
+
+This means converting:
+    [numbers, numbers, numbers] --> "There's a rock 2 meters away"
+
+This is EXTREMELY difficult because:
+
+1. AMBIGUITY: The same object looks different from different angles
+2. VARIATION: Every rock looks slightly different
+3. NOISE: Cameras aren't perfect
+4. LIGHTING: Shadows change everything
+5. SCALE: A rock 1m away looks the same as a building 100m away
+
+WHY THE MOON IS ESPECIALLY HARD
+-------------------------------
+The lunar environment is particularly challenging for computer vision:
+
+1. HARSH SHADOWS:
+   - Sun is very bright
+   - No atmosphere to scatter light
+   - Shadows are pitch black (0 brightness)
+   - Lit areas are extremely bright (255 brightness)
+   - Very little in between
+
+2. LOW TEXTURE:
+   - Lunar soil (regolith) is fairly uniform
+   - Not many distinctive features to track
+   - One gray area looks like another
+
+3. NO COLOR VARIATION:
+   - Everything is grayish
+   - No grass, trees, or colorful objects
+   - Harder to distinguish regions
+
+These challenges make the Lunar Autonomy Challenge genuinely difficult,
+not just academically interesting.
+
+
+================================================================================
+            CHAPTER 5: THE FUNDAMENTAL PROBLEM - "WHERE AM I?"
+================================================================================
+
+WHY KNOWING YOUR LOCATION MATTERS
+---------------------------------
+Imagine you wake up in an unfamiliar city with no phone or map.
+To navigate, you need to know:
+1. Where you are RIGHT NOW
+2. Where you want to go
+3. What's between you and your destination
+
+A robot faces the same problem, but harder:
+- It doesn't even know where it STARTED
+- It can only see through imperfect cameras
+- Every measurement has errors
+
+THE LOCALIZATION PROBLEM
+------------------------
+LOCALIZATION means determining your position and orientation.
+
+POSITION: Where are you in space? (x, y, z coordinates)
+ORIENTATION: Which way are you facing? (rotation)
+
+Together, these are called your POSE:
+    Pose = Position + Orientation
+
+For our rover:
+    Position = (x, y, z) in meters from starting point
+    Orientation = (roll, pitch, yaw) rotation angles
+
+    Example pose: "5 meters east, 3 meters north, facing northeast"
+
+THE MAPPING PROBLEM
+-------------------
+MAPPING means building a representation of the environment.
+
+For a simple hallway:
+    "Wall on left at 0.5m, wall on right at 2.5m, door at end 10m away"
+
+For lunar terrain:
+    "Ground height at every point, rock locations, slope angles"
+
+The map helps you plan where to go.
+
+THE CHICKEN-AND-EGG PROBLEM (SLAM)
+----------------------------------
+Here's the tricky part:
+
+- To know WHERE YOU ARE, you need a map (to compare what you see with)
+- To BUILD A MAP, you need to know where you are (to know where to put things)
+
+But you have neither! This is called SLAM:
+
+    Simultaneous Localization And Mapping
+
+SLAM solves both problems at once:
+    As you move --> Build map AND figure out position --> Use map to improve position --> Use position to improve map --> Repeat
+
+REAL-WORLD ANALOGY: EXPLORING A DARK HOUSE
+------------------------------------------
+Imagine you're blindfolded in a house you've never visited:
+
+Step 1: Start at front door. You know nothing.
+
+Step 2: Reach out and feel a wall. "There's a wall to my left."
+        You've started building a mental map!
+
+Step 3: Walk forward, counting steps. "I've moved 3 steps forward."
+        You're localizing relative to start!
+
+Step 4: Feel another wall. "Wall ahead." You add this to your mental map.
+
+Step 5: Turn right, walk more. Your mental map grows.
+
+Step 6: Suddenly you feel that first wall again! "Wait, I've been here before!"
+        This is called LOOP CLOSURE - recognizing a place you've visited.
+        Now you can correct any errors that accumulated.
+
+This is EXACTLY what SLAM does, but with cameras instead of hands.
+
+HOW THIS PROJECT SOLVES IT
+--------------------------
+We use ORB-SLAM3 to solve the SLAM problem:
+
+1. Camera sees image
+2. ORB-SLAM3 finds distinctive features (corners, edges)
+3. It tracks how features move between frames
+4. From this movement, it calculates how the camera moved
+5. It builds a sparse map of feature locations
+6. If it recognizes a place it's been, it corrects accumulated errors
+
+The result: We know where the rover is AND have a map of features.
+
+But ORB-SLAM3's map is SPARSE (just scattered points).
+For navigation, we need DENSE information (what's the ground height everywhere?).
+That's where stereo vision comes in (next chapter).
+
+
+================================================================================
+================================================================================
+
+                PART II: PERCEPTION - HOW THE ROBOT SEES AND UNDERSTANDS
+
+================================================================================
+================================================================================
+
+
+================================================================================
+                    CHAPTER 6: CAMERAS AND IMAGES
+================================================================================
+
+HOW A CAMERA WORKS
+------------------
+A camera is fundamentally a light-measuring device.
+
+BASIC PRINCIPLE:
+1. Light bounces off objects in the world
+2. Some of that light enters the camera through a lens
+3. The lens focuses light onto a sensor
+4. The sensor measures light intensity at each point
+5. These measurements become pixel values
+
+THE PINHOLE CAMERA MODEL
+------------------------
+The simplest camera model is a "pinhole camera":
+
+                     Real World
+                         |
+        Object           |
+           \             |
+            \            |
+             \           |
+              \          |  <-- Pinhole (tiny opening)
+               \         |
+                \        |
+                 \       |
+                  \      |
+                   \     |
+                    \    |
+                     \   |
+                      \  |
+                       \ |
+    ____________________\|____________________
+                        ||
+                        ||  <-- Image appears upside-down
+                        ||      (flipped in camera)
+                     Image Plane
+
+Light from the world passes through the pinhole and creates an image.
+
+CAMERA PARAMETERS (INTRINSICS)
+------------------------------
+Every camera has internal properties that affect how images are formed:
+
+FOCAL LENGTH (f):
+    - Distance from pinhole to image sensor
+    - Measured in pixels (for our purposes)
+    - Our camera: f = 458 pixels
+
+    Longer focal length = more zoom, narrower view
+    Shorter focal length = wider view, less zoom
+
+PRINCIPAL POINT (cx, cy):
+    - The center of the image
+    - Where the optical axis hits the sensor
+    - Usually close to (width/2, height/2)
+    - Our camera: cx = 320, cy = 240
+
+INTRINSIC MATRIX:
+    These parameters are combined into a matrix called K:
+
+    K = | f   0   cx |   =   | 458   0    320 |
+        | 0   f   cy |       | 0     458  240 |
+        | 0   0   1  |       | 0     0    1   |
+
+This matrix is used in all calculations relating 3D world points to 2D image pixels.
+
+THE PROJECTION EQUATION
+-----------------------
+How does a 3D point in the world become a 2D point in the image?
+
+Given a 3D point P = (X, Y, Z) in front of the camera:
+
+Step 1: Divide by depth to get normalized coordinates
+        x = X / Z
+        y = Y / Z
+
+Step 2: Apply camera intrinsics to get pixel coordinates
+        u = f * x + cx = f * (X/Z) + cx
+        v = f * y + cy = f * (Y/Z) + cy
+
+EXAMPLE:
+    Point at (1, 2, 5) meters in front of camera
+    Camera: f=458, cx=320, cy=240
+
+    x = 1/5 = 0.2
+    y = 2/5 = 0.4
+
+    u = 458 * 0.2 + 320 = 411.6 pixels
+    v = 458 * 0.4 + 240 = 423.2 pixels
+
+    The point appears at pixel (412, 423) in the image.
+
+THE CRITICAL LIMITATION
+-----------------------
+Notice the problem:
+
+    u = f * (X/Z) + cx
+    v = f * (Y/Z) + cy
+
+We get (u, v) from the camera. We know f, cx, cy.
+But we have TWO equations and THREE unknowns (X, Y, Z).
+
+This is IMPOSSIBLE to solve! We've lost information.
+
+The key issue: We don't know Z (depth).
+
+A point at (1, 2, 5) gives the same pixel as (2, 4, 10) or (0.5, 1, 2.5).
+They all appear at the same pixel because they're on the same line from the camera.
+
+    Camera -------- (1,2,5) -------- (2,4,10) -------- (infinity)
+           \
+            All these points project to the same pixel!
+
+This is called the SCALE AMBIGUITY problem.
+A single camera CANNOT measure depth.
+
+SOLUTION: USE TWO CAMERAS
+-------------------------
+This is exactly why we have two cameras on the lunar rover.
+By using two cameras (stereo vision), we CAN recover depth.
+
+This is explained in the next chapter.
+
+
+================================================================================
+            CHAPTER 7: STEREO VISION - SEEING DEPTH WITH TWO CAMERAS
+================================================================================
+
+THE KEY INSIGHT
+---------------
+Your two eyes are separated by about 6 cm.
+Each eye sees the world from a slightly different position.
+Your brain uses this difference to perceive depth.
+
+A stereo camera system does the same thing:
+- Two cameras, separated by a known distance (baseline)
+- Each camera sees the same scene from a different angle
+- The DIFFERENCE in where objects appear gives us depth
+
+THE CONCEPT OF DISPARITY
+------------------------
+When you look at something close, your eyes point inward (converge).
+When you look at something far, your eyes point nearly parallel.
+
+For cameras, we measure DISPARITY:
+
+    Disparity = position in left image - position in right image
+
+EXAMPLE:
+    A rock appears at pixel 300 in the left camera
+    The SAME rock appears at pixel 250 in the right camera
+
+    Disparity = 300 - 250 = 50 pixels
+
+KEY RELATIONSHIP:
+    - CLOSE objects have LARGE disparity (images very different)
+    - FAR objects have SMALL disparity (images almost the same)
+    - Objects at INFINITY have ZERO disparity (parallel viewing)
+
+VISUALIZING DISPARITY
+---------------------
+
+    Close Object (large disparity):
+
+    Left Camera sees:    Right Camera sees:
+    [     O    ]         [  O       ]
+    Position: 300        Position: 200
+    Disparity = 100 pixels (large = close)
+
+
+    Far Object (small disparity):
+
+    Left Camera sees:    Right Camera sees:
+    [     O    ]         [    O     ]
+    Position: 300        Position: 290
+    Disparity = 10 pixels (small = far)
+
+THE STEREO DEPTH EQUATION
+-------------------------
+The relationship between disparity and depth is:
+
+                baseline * focal_length
+    depth = ─────────────────────────────
+                    disparity
+
+Where:
+    baseline = distance between cameras (meters)
+    focal_length = camera focal length (pixels)
+    disparity = pixel difference (pixels)
+    depth = distance to object (meters)
+
+EXAMPLE WITH OUR LUNAR ROVER:
+    baseline = 0.162 m (16.2 cm)
+    focal_length = 458 pixels
+
+    If disparity = 50 pixels:
+        depth = (0.162 * 458) / 50 = 1.48 meters
+
+    If disparity = 25 pixels:
+        depth = (0.162 * 458) / 25 = 2.97 meters
+
+    If disparity = 10 pixels:
+        depth = (0.162 * 458) / 10 = 7.42 meters
+
+WHY THIS WORKS: THE GEOMETRY
+----------------------------
+
+                             Real World Point P
+                                    *
+                                   /|\
+                                  / | \
+                                 /  |  \
+                                /   |   \
+                               /    |    \
+                              /   depth   \
+                             /      |      \
+                            /       |       \
+                           /        |        \
+                          /         |         \
+                         /          |          \
+    Left Camera  -------/-------- baseline ------\------- Right Camera
+        [    *  ]       <--- 16.2 cm --->         [  *    ]
+        sees here                                  sees here
+        (pixel 300)                                (pixel 250)
+
+    The angle from each camera to the point is different.
+    Using trigonometry, we can calculate the depth.
+
+STEREO MATCHING: THE HARD PART
+------------------------------
+We know the formula. But to USE it, we need to know:
+"Which point in the left image corresponds to which point in the right image?"
+
+This is called STEREO MATCHING or CORRESPONDENCE.
+
+THE EPIPOLAR CONSTRAINT:
+    If images are properly aligned (rectified), matching points
+    lie on the SAME ROW in both images.
+
+    Left image, row 200:  [  .   O   .   .   .  ]
+    Right image, row 200: [  .   .   .   O   .  ]
+                                ↑───────↑
+                          Same point, same row, different column
+                          The column difference = disparity
+
+This means we only need to search HORIZONTALLY, not the entire image.
+This makes stereo matching tractable.
+
+STEREO MATCHING ALGORITHMS
+--------------------------
+
+METHOD 1: BLOCK MATCHING (Simple)
+    For each pixel in left image:
+    1. Take a small patch (e.g., 5x5 pixels) around it
+    2. Slide that patch along the same row in the right image
+    3. Find the position where the patch matches best
+    4. The shift amount = disparity
+
+    Problems:
+    - Assumes patch looks the same in both images
+    - Fails in texture-less regions (nothing to match)
+    - Each pixel is independent (noisy result)
+
+METHOD 2: SEMI-GLOBAL MATCHING (SGM) - Better
+    Same as block matching, but adds SMOOTHNESS constraints:
+    - Neighboring pixels should have similar disparity
+    - Real objects are continuous, not random points
+    - Penalize sudden jumps in disparity
+
+    This produces MUCH cleaner depth maps.
+
+    Our system uses OpenCV's StereoSGBM (Semi-Global Block Matching).
+
+METHOD 3: NEURAL NETWORKS (FoundationStereo) - Best
+    Train a deep learning model on millions of stereo pairs
+    where we KNOW the correct depth.
+
+    The network learns:
+    - What matching features look like
+    - How to handle difficult cases (shadows, textures)
+    - How to produce smooth, accurate depth
+
+    This is what FoundationStereo does. See next chapter.
+
+FROM DISPARITY TO DEPTH MAP
+---------------------------
+The result of stereo matching is a DISPARITY MAP:
+    - Same size as the input image (640 x 480)
+    - Each pixel stores the disparity value (how much it shifted)
+    - High values = close, Low values = far
+
+We convert this to a DEPTH MAP:
+    depth[y][x] = (baseline * focal_length) / disparity[y][x]
+
+Now we know the distance to EVERY visible point in the scene!
+
+WHAT CAN GO WRONG
+-----------------
+Stereo vision is not perfect. It fails when:
+
+1. TEXTURE-LESS REGIONS:
+   A flat white wall has no features to match.
+   The algorithm doesn't know where to look.
+   Result: Random or incorrect depth.
+
+2. REPETITIVE PATTERNS:
+   A tiled floor has many similar-looking points.
+   The algorithm might match to the wrong one.
+   Result: Incorrect depth.
+
+3. OCCLUSIONS:
+   One camera sees something that the other can't (hidden behind obstacle).
+   There IS no matching point.
+   Result: Missing or incorrect depth.
+
+4. REFLECTIONS:
+   Shiny surfaces reflect different things to each camera.
+   Matching fails.
+   Result: Incorrect depth.
+
+5. VERY FAR OBJECTS:
+   Disparity becomes very small (sub-pixel).
+   Hard to measure accurately.
+   Result: Noisy depth for distant objects.
+
+The lunar surface has LOTS of texture-less regions (uniform gray regolith),
+making stereo particularly challenging there.
+
+UNCERTAINTY IN STEREO
+---------------------
+Given these failure modes, we want to know:
+"How confident am I in this depth measurement?"
+
+We measure UNCERTAINTY using a LEFT-RIGHT CONSISTENCY CHECK:
+
+1. Compute disparity from left to right (d_LR)
+2. Compute disparity from right to left (d_RL)
+3. If they agree, we're confident
+4. If they disagree, something went wrong
+
+    uncertainty = |d_LR - d_RL|
+
+    Low uncertainty = confident
+    High uncertainty = something's wrong (texture-less, occlusion, etc.)
+
+This uncertainty is CRUCIAL for our perception-aware planning later.
+
+
+================================================================================
+        CHAPTER 8: FOUNDATIONSTEREO - DEEP LEARNING FOR BETTER DEPTH
+================================================================================
+
+WHY TRADITIONAL STEREO ISN'T GOOD ENOUGH
+----------------------------------------
+Traditional stereo matching (like SGM) has fundamental limitations:
+
+1. Hand-crafted features don't capture complex patterns
+2. Block matching assumes local appearance similarity
+3. Smoothness assumptions don't handle object boundaries well
+4. No understanding of what things ARE (just pattern matching)
+
+Result: Traditional stereo typically produces valid depth for only
+about 4% of pixels in challenging scenes.
+
+THE DEEP LEARNING REVOLUTION
+----------------------------
+What if instead of hand-crafting rules, we LEARN them from data?
+
+Deep learning works like this:
+1. Collect millions of stereo image pairs WITH known correct depth
+2. Build a neural network (layers of mathematical operations)
+3. Show the network the images and the correct answers
+4. Let the network adjust its internal parameters to predict correctly
+5. Repeat millions of times
+6. The network learns to handle all sorts of cases
+
+WHAT FOUNDATIONSTEREO IS
+------------------------
+FoundationStereo is a deep learning model for stereo depth estimation.
+
+It was trained on massive datasets with ground truth depth,
+learning to handle:
+- Texture-less regions
+- Reflections
+- Thin structures
+- Complex materials
+- Various lighting conditions
+
+THE RESULT: Instead of 4% coverage, FoundationStereo achieves 95%+ coverage.
+This is a DRAMATIC improvement.
+
+HOW NEURAL NETWORKS WORK (SIMPLIFIED)
+-------------------------------------
+A neural network is a series of transformations:
+
+    Input Image --> [Layer 1] --> [Layer 2] --> ... --> [Layer N] --> Output
+
+Each layer:
+1. Takes input from previous layer
+2. Applies mathematical operations (multiplication, addition)
+3. Passes through a "non-linearity" (like thresholding)
+4. Outputs to next layer
+
+The "weights" in these multiplications are LEARNED from data.
+
+CONVOLUTIONAL NEURAL NETWORKS (CNNs)
+------------------------------------
+For images, we use Convolutional Neural Networks:
+
+Instead of treating each pixel independently, CNNs:
+1. Slide small filters across the image
+2. Each filter detects certain patterns (edges, textures)
+3. Build up from simple features to complex concepts
+
+    Raw Pixels --> Edges --> Textures --> Shapes --> Objects
+
+EXAMPLE of what layers might learn:
+    Layer 1: Horizontal edges, vertical edges
+    Layer 2: Corners, gradients
+    Layer 3: Textures (rough, smooth)
+    Layer 4: Parts (wheels, windows)
+    Layer 5: Objects (car, person)
+
+FOUNDATIONSTEREO ARCHITECTURE (HIGH LEVEL)
+------------------------------------------
+FoundationStereo uses a multi-stage approach:
+
+STAGE 1: FEATURE EXTRACTION
+    Both left and right images go through a CNN
+    Output: Rich feature maps capturing important visual information
+
+STAGE 2: COST VOLUME
+    Compare features from left and right at all possible disparities
+    Build a 3D "cost volume": (height, width, max_disparity)
+    Each entry = "how well does left[x,y] match right[x-d,y]?"
+
+STAGE 3: COST AGGREGATION
+    Use 3D convolutions to enforce smoothness
+    Learn which costs to trust
+
+STAGE 4: DISPARITY ESTIMATION
+    From aggregated costs, predict disparity at each pixel
+    Can use "soft argmin" for sub-pixel accuracy
+
+The network is trained end-to-end to minimize difference between
+predicted depth and ground truth depth.
+
+WHY THIS IS BETTER
+------------------
+Traditional:
+    Match this 5x5 block in a 1D search along the row
+
+FoundationStereo:
+    Use LEARNED features (much more powerful than raw pixels)
+    Consider CONTEXT (what's around the pixel)
+    Learn WHEN to trust matches and when to doubt them
+    Handle AMBIGUITY gracefully
+
+HOW WE USE IT IN THIS PROJECT
+-----------------------------
+In the ORB_SLAM3-master folder, there's integration with FoundationStereo:
+
+    stereo_euroc_foundationstereo.cc
+
+This modified ORB-SLAM3:
+1. Uses FoundationStereo to compute dense depth
+2. Feeds this into ORB-SLAM3 for better tracking
+3. Provides much denser maps than traditional stereo
+
+TRADE-OFFS
+----------
+FoundationStereo is better, but:
+    - Slower (neural network computation)
+    - Requires GPU
+    - More complex to set up
+
+Traditional SGM is faster, but:
+    - Lower quality
+    - Works everywhere
+    - Simpler
+
+Our system can use EITHER:
+    - FoundationStereo for best quality (when GPU available)
+    - SGM for real-time on simpler hardware
+
+
+================================================================================
+            CHAPTER 9: ORB-SLAM3 - TRACKING WHERE YOU ARE
+================================================================================
+
+WHAT IS SLAM AGAIN?
+-------------------
+Simultaneous Localization And Mapping:
+    - Figure out WHERE you are
+    - While building a MAP of the environment
+    - At the same time!
+
+ORB-SLAM3 is one of the most advanced SLAM systems available.
+
+WHAT "ORB" STANDS FOR
+---------------------
+ORB = Oriented FAST and Rotated BRIEF
+
+This is a type of FEATURE:
+    - FAST: A method to find "interesting" points (corners)
+    - BRIEF: A way to describe those points (so we can recognize them later)
+    - Oriented/Rotated: Works even if the camera is tilted
+
+FEATURES: THE KEY TO SLAM
+-------------------------
+A FEATURE is a distinctive point in an image that:
+1. Is easy to find
+2. Looks the same from different angles
+3. Is unique enough to recognize later
+
+Good features: Corners, intersections, texture changes
+Bad features: Flat walls, uniform surfaces
+
+WHY CORNERS ARE GOOD FEATURES:
+
+    Flat region:      Corner:
+
+    [...]             [X...]
+    [...]             [.X..]
+    [...]             [..X.]
+
+    Flat regions look   Corners look different
+    the same everywhere as you move around them
+    (bad for tracking)  (good for tracking!)
+
+ORB FEATURES
+------------
+The ORB detector:
+
+1. FIND CORNERS (FAST):
+   Look for points where intensity changes sharply in multiple directions
+
+       * * *
+      *     *
+     *   P   *  <-- Check if P is brighter/darker than surrounding circle
+      *     *
+       * * *
+
+2. DESCRIBE THEM (BRIEF):
+   Create a "fingerprint" of the region around the corner
+   - Compare pairs of pixels: "Is this pixel brighter than that one?"
+   - Repeat 256 times with different pairs
+   - Get a 256-bit binary string
+
+   Example: "10110010110101..." (256 bits)
+
+   This string is unique to this corner.
+   We can compare strings to match features.
+
+3. HANDLE ROTATION:
+   Compute the dominant orientation of the patch
+   Rotate the comparison pattern accordingly
+   Feature description is now rotation-invariant
+
+HOW ORB-SLAM3 WORKS
+-------------------
+ORB-SLAM3 runs THREE parallel threads:
+
+    ┌─────────────────────────────────────────────────────────────┐
+    │                        ORB-SLAM3                            │
+    ├──────────────────┬───────────────────┬─────────────────────┤
+    │    TRACKING      │   LOCAL MAPPING   │   LOOP CLOSING      │
+    │                  │                   │                     │
+    │ Process each     │ Refine the map    │ Recognize places    │
+    │ new frame        │ locally           │ you've visited      │
+    │                  │                   │                     │
+    │ - Find features  │ - Insert new      │ - Detect loops      │
+    │ - Match to map   │   keyframes       │ - Correct drift     │
+    │ - Estimate pose  │ - Create map pts  │ - Optimize map      │
+    │                  │ - Bundle adjust   │                     │
+    └──────────────────┴───────────────────┴─────────────────────┘
+
+TRACKING THREAD (Every frame):
+    1. New image arrives from camera
+    2. Extract ORB features (corners + descriptors)
+    3. Match features to existing map points
+    4. Estimate camera pose from matches
+    5. Decide if this should be a new keyframe
+
+LOCAL MAPPING THREAD (When keyframe added):
+    1. Process new keyframe
+    2. Create new map points from stereo/triangulation
+    3. Remove bad map points
+    4. Run local bundle adjustment (optimize nearby poses + points)
+
+LOOP CLOSING THREAD (Continuously):
+    1. Compare current keyframe to all previous ones
+    2. If similar place found: potential loop!
+    3. Verify match geometrically
+    4. Correct accumulated drift
+    5. Run global optimization
+
+WHAT IS A KEYFRAME?
+-------------------
+We can't keep every single image - too much data!
+
+A KEYFRAME is an important image we keep as a reference:
+    - Taken when camera moves significantly
+    - Taken when tracking quality drops
+    - Used as anchors for the map
+
+Between keyframes, we just track motion.
+At keyframes, we add new information to the map.
+
+WHAT IS BUNDLE ADJUSTMENT?
+--------------------------
+Bundle Adjustment (BA) is an optimization that improves both:
+    - Camera poses (where was the camera?)
+    - Map point positions (where are things in the world?)
+
+The goal: Minimize "reprojection error"
+
+    Reprojection error = distance between:
+        - Where a map point SHOULD appear (based on current estimates)
+        - Where it ACTUALLY appears (in the image)
+
+BA adjusts everything to make these match as closely as possible.
+
+    Before BA:                 After BA:
+
+    Camera position is wrong   Camera position corrected
+    Map points are wrong       Map points corrected
+    Errors are large           Errors are minimal
+
+This is the "magic" that makes SLAM accurate.
+
+WHAT IS LOOP CLOSURE?
+---------------------
+Every measurement has small errors. Over time, errors accumulate (DRIFT).
+
+Imagine walking in a square and returning to your start:
+
+    True path:        Estimated path (with drift):
+
+    +---+---+         +---+---+
+    |       |         |       |
+    +   S   +         +   S   +
+    |       |                  \
+    +---+---+         +---+----\
+                               X (doesn't close!)
+
+LOOP CLOSURE detects when you return to a place you've been:
+    "Wait! I've seen this view before!"
+
+When a loop is detected:
+1. We know start and end should be the SAME PLACE
+2. We can compute the accumulated error
+3. We distribute this error along the whole loop
+4. The map becomes consistent again
+
+This is what allows SLAM to work over long distances.
+
+ORB-SLAM3 FOR OUR LUNAR ROVER
+-----------------------------
+ORB-SLAM3 has been configured for our lunar rover:
+
+Configuration file: Lunar.yaml
+    Camera intrinsics: fx=458, fy=458, cx=320, cy=240
+    Stereo baseline: 0.162 m
+    ORB features: 2000 per frame (more for lunar's challenging lighting)
+
+The output is:
+    - Camera pose at each frame (where is the rover?)
+    - Sparse map of feature points (where are distinctive features?)
+
+This pose is ESSENTIAL for everything else we do:
+    - To build our dense map, we need to know where each depth image was taken
+    - To plan paths, we need to know where we are
+    - To return to the lander, we need to know where the lander is relative to us
+
+
+================================================================================
+            CHAPTER 10: UNCERTAINTY - KNOWING WHAT YOU DON'T KNOW
+================================================================================
+
+WHY UNCERTAINTY MATTERS
+-----------------------
+Every measurement has error. Every estimate is imperfect.
+
+WRONG APPROACH:
+    "The rock is 2.47 meters away" (stated as absolute fact)
+
+CORRECT APPROACH:
+    "The rock is 2.47 meters away, give or take 0.3 meters"
+    (stated with uncertainty)
+
+The second statement is more useful because it tells you:
+    - How much to trust this measurement
+    - Whether to act on it or seek better information
+
+SOURCES OF UNCERTAINTY
+----------------------
+In our system, uncertainty comes from:
+
+1. SENSOR NOISE:
+   - Cameras aren't perfect
+   - Pixels have random fluctuations
+   - Result: Measured values vary slightly each time
+
+2. STEREO MATCHING ERRORS:
+   - Matching algorithm might find wrong correspondence
+   - Texture-less regions have no good match
+   - Result: Depth values might be wrong
+
+3. POSE ESTIMATION ERRORS:
+   - ORB-SLAM3 isn't perfect
+   - Poses have small errors
+   - Result: Map points might be in slightly wrong locations
+
+4. ENVIRONMENTAL CHALLENGES:
+   - Shadows obscure information
+   - Dust or glare confuses cameras
+   - Result: Some regions are harder to measure
+
+REPRESENTING UNCERTAINTY
+------------------------
+GAUSSIAN (NORMAL) DISTRIBUTION:
+    The most common way to represent uncertainty.
+
+    "The distance is 2.47 meters with standard deviation 0.3 meters"
+
+    This means:
+        ~68% chance the true value is between 2.17 and 2.77 m
+        ~95% chance the true value is between 1.87 and 3.07 m
+        ~99.7% chance the true value is between 1.57 and 3.37 m
+
+COVARIANCE MATRIX:
+    For multiple related values (like x, y, z position).
+    Captures uncertainty in each dimension AND correlations between them.
+
+    Example:
+    "Position is (5, 3) meters with covariance [[0.1, 0.02], [0.02, 0.2]]"
+
+    This tells us:
+        - More uncertain in Y than X (0.2 > 0.1)
+        - X and Y errors are slightly correlated
+
+COMPUTING UNCERTAINTY IN OUR SYSTEM
+-----------------------------------
+
+1. STEREO DEPTH UNCERTAINTY:
+   We use the left-right consistency check:
+
+   consistency_error = |disparity_LR - disparity_RL|
+
+   If disparity computed left-to-right equals disparity computed right-to-left,
+   we're confident. If they disagree, we're uncertain.
+
+   depth_uncertainty = f(consistency_error)
+
+2. MAPPING UNCERTAINTY:
+   Each voxel accumulates observations.
+   More observations = more certain.
+
+   Also, if observations disagree (high variance), we're uncertain.
+
+   map_uncertainty = f(num_observations, variance_of_observations)
+
+3. POSE UNCERTAINTY:
+   ORB-SLAM3 can output a covariance matrix for the pose estimate.
+   This tells us how confident we are in the robot's position.
+
+HOW UNCERTAINTY AFFECTS DECISIONS
+---------------------------------
+Traditional robot:
+    "Depth = 2.47 meters" --> Plan as if this is exactly true
+    If measurement was wrong --> Robot crashes into obstacle
+
+Perception-aware robot:
+    "Depth = 2.47 meters, uncertainty = 0.3 m"
+    --> If uncertainty is low: trust the measurement
+    --> If uncertainty is high: be cautious, maybe don't go that way
+
+This is the KEY INSIGHT of our system:
+    Use uncertainty to make safer decisions.
+
+VISUALIZING UNCERTAINTY
+-----------------------
+We often visualize uncertainty as a color map:
+
+    Low uncertainty:   GREEN  (confident, safe)
+    Medium uncertainty: YELLOW (somewhat sure)
+    High uncertainty:   RED    (not confident, dangerous)
+
+    ┌───────────────────────────────┐
+    │ ░░░░░░░▓▓▓▓▓████████▓▓▓░░░░░ │
+    │ ░░░░░▓▓▓███████████████▓▓░░░ │
+    │ ░░░▓▓████OBSTACLE████████▓░░ │
+    │ ░░▓▓██████████████████████░░ │
+    │ ░░░▓▓████████████████▓▓░░░░░ │
+    │ ░░░░░░▓▓▓▓▓██████▓▓▓░░░░░░░░ │
+    └───────────────────────────────┘
+
+    ░ = low uncertainty (green) - we're confident this is clear
+    ▓ = medium uncertainty (yellow) - we're somewhat sure
+    █ = high uncertainty (red) OR obstacle
+
+
+================================================================================
+================================================================================
+
+                PART III: MAPPING - BUILDING A MODEL OF THE WORLD
+
+================================================================================
+================================================================================
+
+
+================================================================================
+                    CHAPTER 11: WHAT IS A MAP?
+================================================================================
+
+DEFINITION
+----------
+A MAP is a representation of the environment that helps with navigation.
+
+Different maps for different purposes:
+
+TOPOGRAPHIC MAP (hiking):
+    Shows terrain elevation, trails, water features
+
+ROAD MAP (driving):
+    Shows roads, intersections, distances
+
+FLOOR PLAN (building):
+    Shows walls, rooms, doors
+
+For a robot, we need a map that answers:
+    - What's at each location?
+    - Can I drive there?
+    - How high is the ground?
+
+TYPES OF ROBOT MAPS
+-------------------
+
+1. OCCUPANCY GRID:
+    Divide world into cells
+    Each cell: "Is this occupied?"
+    Binary: 0 = free, 1 = occupied
+
+    [ 0 0 0 1 1 0 ]
+    [ 0 0 0 1 0 0 ]    1 = obstacle
+    [ 0 0 0 0 0 0 ]    0 = free
+    [ 1 1 0 0 0 1 ]
+
+2. HEIGHT MAP (2.5D):
+    Grid where each cell stores height
+    Like a topographic map
+
+    [ 0.1  0.1  0.2  0.3 ]
+    [ 0.1  0.2  0.5  0.4 ]    Numbers = height in meters
+    [ 0.2  0.3  0.4  0.3 ]
+    [ 0.3  0.4  0.3  0.2 ]
+
+3. VOXEL GRID (3D):
+    Full 3D grid of cubes
+    Each cube: occupied or free
+    Most complete, but most memory
+
+4. POINT CLOUD:
+    Just a list of 3D points
+    No regular structure
+    From stereo/LiDAR/RGB-D
+
+5. FEATURE MAP:
+    Sparse set of distinctive points
+    What ORB-SLAM3 builds
+    Good for localization, not for navigation
+
+OUR SYSTEM USES:
+    - ORB-SLAM3: Feature map (for localization)
+    - Our mapping module: Voxel grid + Height map (for navigation)
+
+WHY WE NEED DENSE MAPS
+----------------------
+ORB-SLAM3 builds a SPARSE map:
+    Just 1000-10000 distinctive points
+
+For navigation, we need to know about EVERYWHERE:
+    - Is the ground flat here?
+    - Is there an obstacle there?
+    - Can I drive through this region?
+
+That's why we also build DENSE maps from stereo depth:
+    - Every pixel gives a 3D point
+    - We integrate all these points into a voxel grid
+    - From the voxels, we extract a height map
+
+
+================================================================================
+                CHAPTER 12: VOXEL GRIDS - 3D LEGO BLOCKS
+================================================================================
+
+WHAT IS A VOXEL?
+----------------
+Pixel = Picture Element (2D)
+Voxel = Volume Element (3D)
+
+A voxel is a small cube in 3D space:
+
+    ┌───────┐
+    │       │
+    │       │  <-- One voxel
+    │       │      (a small cube)
+    └───────┘
+
+A VOXEL GRID divides 3D space into a regular grid of voxels:
+
+    ┌───┬───┬───┬───┐
+    │   │   │   │   │
+    ├───┼───┼───┼───┤
+    │   │   │███│   │   ███ = occupied voxel
+    ├───┼───┼───┼───┤
+    │   │   │   │   │
+    └───┴───┴───┴───┘
+
+    (This is 2D cross-section; actual grid is 3D)
+
+VOXEL GRID PARAMETERS
+---------------------
+RESOLUTION: Size of each voxel
+    - Our system: 0.1 m (10 cm cubes)
+    - Smaller = more detail, more memory
+    - Larger = less detail, less memory
+
+GRID SIZE: How many voxels in each dimension
+    - Our system: 200 x 200 x 50 = 2,000,000 voxels
+    - Defines the area we can map
+
+ORIGIN: World coordinates of the grid corner
+    - Our system: (-10, -10, -2)
+    - Allows us to convert between world and voxel coordinates
+
+COORDINATE CONVERSION
+---------------------
+World to Voxel:
+    voxel_x = floor((world_x - origin_x) / resolution)
+    voxel_y = floor((world_y - origin_y) / resolution)
+    voxel_z = floor((world_z - origin_z) / resolution)
+
+Example:
+    World point: (5.23, 3.17, 0.45)
+    Origin: (-10, -10, -2)
+    Resolution: 0.1
+
+    voxel_x = floor((5.23 - (-10)) / 0.1) = floor(152.3) = 152
+    voxel_y = floor((3.17 - (-10)) / 0.1) = floor(131.7) = 131
+    voxel_z = floor((0.45 - (-2)) / 0.1) = floor(24.5) = 24
+
+    This point goes into voxel [152, 131, 24]
+
+WHAT EACH VOXEL STORES
+----------------------
+Each voxel in our grid stores:
+
+1. OCCUPANCY (log-odds):
+    How likely is this voxel to be occupied?
+    Stored as log-odds (explained below)
+
+2. HEIGHT STATISTICS:
+    Sum of heights seen in this column
+    Sum of squared heights (for variance)
+    Count of observations
+
+3. UNCERTAINTY:
+    How confident are we about this voxel?
+
+LOG-ODDS FOR OCCUPANCY
+----------------------
+Instead of storing probability directly, we store LOG-ODDS:
+
+    log_odds = log(probability / (1 - probability))
+
+WHY?
+    - Probability: Needs Bayes rule to update (multiplication)
+    - Log-odds: Just needs addition to update (simpler, faster)
+
+To update when we see evidence:
+    log_odds_new = log_odds_old + log_odds_observation
+
+Example:
+    Start: log_odds = 0 (50% probability)
+
+    See a point in this voxel: add +0.85
+        log_odds = 0 + 0.85 = 0.85
+        probability = 1 / (1 + exp(-0.85)) = 70%
+
+    See another point: add +0.85
+        log_odds = 0.85 + 0.85 = 1.70
+        probability = 1 / (1 + exp(-1.70)) = 85%
+
+    See that a ray passes THROUGH (it's free): add -0.4
+        log_odds = 1.70 - 0.4 = 1.30
+        probability = 1 / (1 + exp(-1.30)) = 79%
+
+The more evidence we accumulate, the more confident we become.
+
+DEPTH INTEGRATION
+-----------------
+How we add depth measurements to the voxel grid:
+
+For each frame:
+1. Get depth map from stereo (640 x 480 depths)
+2. Get robot pose from ORB-SLAM3
+3. For each pixel with valid depth:
+   a. Back-project to 3D point in camera frame
+   b. Transform to world frame using pose
+   c. Find which voxel this point falls in
+   d. Update that voxel's occupancy (log-odds += hit)
+   e. Update height statistics
+
+Back-projection (2D pixel + depth --> 3D point):
+    Given pixel (u, v) and depth Z:
+
+    X = (u - cx) * Z / fx
+    Y = (v - cy) * Z / fy
+    Z = Z
+
+    Point in camera frame: (X, Y, Z)
+
+Transform to world (camera frame --> world frame):
+    Given camera pose: Rotation R, Translation t
+
+    Point_world = R * Point_camera + t
+
+RAYCASTING
+----------
+When we see a point at distance D, we know:
+    - The point itself is OCCUPIED
+    - Everything BETWEEN the camera and the point is FREE
+
+We "cast a ray" from camera to point, marking intermediate voxels as free:
+
+    Camera ═══════ FREE ═══════ FREE ═══════ FREE ═══ HIT
+                    ↓            ↓            ↓         ↓
+              (decrement)  (decrement)  (decrement)  (increment)
+
+This is important for building accurate maps:
+    - Without raycasting, we only know where things ARE
+    - With raycasting, we also know where things AREN'T
+
+
+================================================================================
+                CHAPTER 13: HEIGHT MAPS - A SIMPLER VIEW
+================================================================================
+
+WHY HEIGHT MAPS?
+----------------
+Full 3D voxel grid is memory-intensive:
+    200 x 200 x 50 = 2,000,000 voxels
+
+For ground robots, we often only care about:
+    "What's the ground height at each (x, y) location?"
+
+A HEIGHT MAP is a 2D array where each cell stores the ground height:
+
+    height_map[x][y] = average Z of points in this vertical column
+
+This reduces memory:
+    200 x 200 = 40,000 cells (50x less than voxel grid)
+
+And matches the Lunar Autonomy Challenge scoring:
+    "How accurately did you map the terrain height?"
+
+COMPUTING THE HEIGHT MAP
+------------------------
+For each (x, y) cell:
+
+1. Collect all points that fall in this column:
+    All points where:
+        floor((point_x - origin_x) / resolution) == x
+        floor((point_y - origin_y) / resolution) == y
+
+2. Compute statistics:
+    mean_height = sum(heights) / count
+    variance = sum(heights^2) / count - mean_height^2
+
+The height map stores:
+    height_map[x][y] = mean_height
+
+HANDLING MULTIPLE SURFACES
+--------------------------
+What if there's a bridge or overhang?
+
+    ████████████  <-- Bridge overhead
+
+    ░░░░░░░░░░░░  <-- Ground below
+
+A height map can only store ONE height per (x, y).
+
+Solutions:
+1. Store the LOWEST height (ground)
+2. Store the HIGHEST height (ceiling)
+3. Use full voxel grid for complex areas
+
+For lunar surface, there are no bridges, so height map works well.
+
+HEIGHT MAP FOR LAC SCORING
+--------------------------
+The Lunar Autonomy Challenge scores your height map:
+
+    score = sum over all cells of:
+        1.0 if |your_height - true_height| < 0.05 m
+        0.0 otherwise
+
+To maximize score:
+    - Map as many cells as possible
+    - Keep error below 5 cm
+
+Our system tries to achieve this through:
+    - Dense stereo depth (many measurements)
+    - Averaging (reduces noise)
+    - Uncertainty tracking (know where we're confident)
+
+
+================================================================================
+                CHAPTER 14: UNCERTAINTY IN MAPS
+================================================================================
+
+WHY TRACK MAP UNCERTAINTY?
+--------------------------
+Not all parts of the map are equally reliable.
+
+Well-observed region:
+    - Seen from multiple angles
+    - Many depth measurements
+    - High confidence
+
+Poorly-observed region:
+    - Seen from one angle only
+    - Few measurements
+    - Low confidence
+
+NEVER-observed region:
+    - No measurements at all
+    - Zero confidence
+    - DON'T KNOW what's there!
+
+For safe navigation, we need to KNOW which regions to trust.
+
+SOURCES OF MAP UNCERTAINTY
+--------------------------
+1. MEASUREMENT UNCERTAINTY:
+    From stereo depth (Chapter 10)
+    Some pixels have confident depth, others don't
+
+2. NUMBER OF OBSERVATIONS:
+    More observations --> more confident
+    Averaging reduces noise
+
+3. OBSERVATION VARIANCE:
+    If different observations disagree --> less confident
+    Variance = spread of measured heights
+
+4. DISTANCE FROM SENSOR:
+    Distant measurements are less accurate
+    Stereo degrades at long range
+
+COMPUTING MAP UNCERTAINTY
+-------------------------
+For each height map cell:
+
+1. From measurements:
+    uncertainty_measurement = average of input uncertainties
+
+2. From variance:
+    variance = sum(h^2)/n - (sum(h)/n)^2
+    uncertainty_variance = sqrt(variance)
+
+3. Combined:
+    total_uncertainty = sqrt(uncertainty_measurement^2 + uncertainty_variance^2)
+
+HANDLING UNKNOWN REGIONS
+------------------------
+CRITICAL DISTINCTION:
+
+FREE WITH HIGH UNCERTAINTY:
+    We've looked there, we THINK it's clear, but we're not sure.
+
+COMPLETELY UNKNOWN:
+    We've NEVER looked there. We have NO IDEA what's there.
+
+Unknown is NOT the same as free!
+
+Traditional robots: Unknown = assume free (optimistic)
+Our robot: Unknown = assume dangerous (pessimistic)
+
+This is a fundamental safety principle.
+
+VISUALIZING MAP UNCERTAINTY
+---------------------------
+Our visualization shows uncertainty as colors:
+
+    +-------------------------------------------+
+    |  ░░░░░░░░░░▓▓▓▓▓▓▓▓████████████          |
+    |  ░░░░░░░░░░░░▓▓▓▓▓▓███████████████       |
+    |  ░░░░░░░░░░░░░▓▓▓▓████████████████████   |
+    |  ░░░░░░░░░░░▓▓▓▓▓████████████████████    |
+    |  ░░░░░░░░░▓▓▓▓▓█████████████████         |
+    |  ░░░░░░▓▓▓▓▓█████████████████            |
+    |  ░░░▓▓▓▓▓██████████████████              |
+    +-------------------------------------------+
+
+    ░ = low uncertainty (green) - well observed
+    ▓ = medium uncertainty (yellow) - some observations
+    █ = high uncertainty or unknown (red) - avoid!
+
+The rover should prefer GREEN paths and avoid RED regions.
+
+
+================================================================================
+================================================================================
+
+                PART IV: PLANNING - DECIDING WHERE TO GO
+
+================================================================================
+================================================================================
+
+
+================================================================================
+                    CHAPTER 15: WHAT IS PATH PLANNING?
+================================================================================
+
+THE PROBLEM
+-----------
+Given:
+    - Where you are now (start)
+    - Where you want to go (goal)
+    - What's in between (obstacles)
+
+Find:
+    - A collision-free path from start to goal
+
+REAL-WORLD ANALOGY: NAVIGATING A MAZE
+-------------------------------------
+Imagine you're in a maze:
+
+    +---+---+---+---+---+
+    | S |   |   |   |   |
+    +   +---+   +---+   +
+    |   |   |   |   |   |
+    +   +   +---+   +   +
+    |   |       |   |   |
+    +---+   +---+   +   +
+    |       |       | G |
+    +---+---+---+---+---+
+
+    S = Start
+    G = Goal
+
+You need to find a path from S to G without going through walls.
+
+PATH PLANNING VS PATH FOLLOWING
+-------------------------------
+PATH PLANNING: Figuring out WHICH way to go
+    "Go north, then east, then south, then east..."
+
+PATH FOLLOWING (Control): Actually executing the plan
+    "Turn wheels 30 degrees left, accelerate..."
+
+This chapter is about PLANNING. Control comes later.
+
+TYPES OF PATH PLANNERS
+----------------------
+
+1. GRAPH-BASED (what we use):
+    Represent world as a graph of connected points
+    Search for shortest path through graph
+    Examples: A*, Dijkstra's algorithm
+
+2. SAMPLING-BASED:
+    Randomly sample points, connect ones that can "see" each other
+    Good for high-dimensional spaces
+    Examples: RRT, PRM
+
+3. POTENTIAL FIELD:
+    Goal attracts, obstacles repel
+    Follow the gradient
+    Can get stuck in local minima
+
+4. OPTIMIZATION-BASED:
+    Define a cost function
+    Find path that minimizes cost
+    Examples: Trajectory optimization, MPC
+
+We use A* (graph-based) because:
+    - 2D grid is natural for costmap
+    - A* is optimal and complete
+    - Well-understood and debuggable
+
+GLOBAL VS LOCAL PLANNING
+------------------------
+GLOBAL PLANNER:
+    - Plans path from current position to far-away goal
+    - Uses the entire map
+    - Runs occasionally (when you need a new goal)
+
+LOCAL PLANNER:
+    - Handles immediate obstacles
+    - Uses only nearby information
+    - Runs frequently (reactive)
+
+    Global: "To get to the lander, go northeast, then east"
+    Local: "But there's a rock here! Swerve around it"
+
+Our system has both:
+    - Global: Coverage planner (where to explore next)
+    - Local: A* on costmap (how to get there)
+
+
+================================================================================
+            CHAPTER 16: COSTMAPS - THE COST OF EVERY LOCATION
+================================================================================
+
+WHAT IS A COSTMAP?
+------------------
+A costmap is a 2D grid where each cell has a COST:
+
+    Low cost = easy/safe to traverse
+    High cost = difficult/dangerous
+    Infinite cost = impossible (obstacle)
+
+Example:
+
+    [ 0  0  0  5  10  ∞  ∞ ]
+    [ 0  0  1  3   8  ∞  ∞ ]     ∞ = obstacle
+    [ 0  0  0  1   5  8  ∞ ]     0 = clear, easy
+    [ 0  0  0  0   0  5  8 ]     1-10 = varying difficulty
+    [ 0  0  0  0   0  0  3 ]
+
+A path planner finds the path that minimizes TOTAL cost:
+    total_cost = sum of costs of all cells on the path
+
+WHY COSTS INSTEAD OF JUST OBSTACLES?
+------------------------------------
+Simple obstacle map: "Can I go here? Yes or no."
+
+Costmap: "How DESIRABLE is it to go here?"
+
+This allows nuance:
+    - "Yes you CAN go through that puddle, but you'd rather not"
+    - "Yes you CAN drive close to that cliff, but stay away"
+    - "Yes you CAN go into that shadow, but we won't see well there"
+
+COSTMAP LAYERS
+--------------
+We build the costmap from multiple LAYERS, each capturing different concerns:
+
+LAYER 1: OBSTACLE LAYER
+    From our height map
+    Where height gradient (slope) is too steep = obstacle
+
+    slope = |height[x+1] - height[x]| / cell_size
+
+    if slope > threshold:
+        cost = INFINITY (can't climb steep slopes)
+
+LAYER 2: INFLATION LAYER
+    Robot has physical size (radius)
+    We can't drive with CENTER right next to obstacle
+
+    Inflate obstacles by robot radius:
+
+        Before inflation:        After inflation:
+
+        [   ][   ][ X ][   ]     [   ][ I ][ I ][ I ]
+        [   ][   ][   ][   ]  -> [ I ][ I ][ X ][ I ]
+        [   ][   ][   ][   ]     [   ][ I ][ I ][ I ]
+
+        X = obstacle
+        I = inflated region (also impassable)
+
+    Additionally, cost DECREASES with distance from obstacles:
+    The closer you are, the higher the cost (even if not blocked)
+
+LAYER 3: UNCERTAINTY LAYER (Our key innovation!)
+    From our uncertainty map
+    High uncertainty = high cost
+
+    cost = uncertainty * weight
+
+    This makes the robot PREFER well-mapped regions.
+
+LAYER 4: SHADOW LAYER
+    Lunar shadows are problematic:
+    - Stereo fails (no texture)
+    - Features are hard to find
+
+    Detect shadows (low brightness in image)
+    Add cost to shadow regions
+
+    cost = shadow_detected ? SHADOW_COST : 0
+
+COMBINING LAYERS
+----------------
+Total cost at cell (x, y):
+
+    cost = w1 * obstacle_cost
+         + w2 * inflation_cost
+         + w3 * uncertainty_cost
+         + w4 * shadow_cost
+
+Weights (w1, w2, w3, w4) control the trade-offs:
+    - High w1: strictly avoid obstacles
+    - High w3: very cautious about uncertainty
+    - High w4: avoid shadows at all costs
+
+These can be tuned based on how risk-averse you want the robot to be.
+
+THE KEY INSIGHT: PERCEPTION-AWARE COSTMAP
+-----------------------------------------
+Traditional costmap:
+    - Obstacles have high cost
+    - Everything else has low cost
+    - Unknown regions have ZERO cost (assumed free)
+
+Our perception-aware costmap:
+    - Obstacles have high cost
+    - UNCERTAIN regions have medium cost
+    - UNKNOWN regions have HIGH cost (assumed dangerous)
+    - Only WELL-OBSERVED FREE regions have low cost
+
+    Traditional:                 Perception-Aware:
+
+    [?][?][?][X][?]              [H][H][H][X][H]
+    [?][?][0][0][?]              [H][M][L][L][H]
+    [?][0][0][0][?]              [M][L][L][L][M]
+
+    ? = unknown (cost = 0)        H = high cost (unknown)
+    X = obstacle (cost = ∞)       M = medium cost (uncertain)
+    0 = free (cost = 0)           L = low cost (well-observed)
+
+This fundamental change makes navigation MUCH safer.
+
+
+================================================================================
+            CHAPTER 17: A* ALGORITHM - FINDING THE BEST PATH
+================================================================================
+
+WHAT IS A*?
+-----------
+A* (pronounced "A-star") is a path-finding algorithm that:
+    - Finds the SHORTEST (lowest cost) path
+    - Explores efficiently (doesn't waste time on bad paths)
+    - Is OPTIMAL (guaranteed to find the best path if one exists)
+    - Is COMPLETE (if a path exists, it will find it)
+
+THE KEY IDEA
+------------
+A* maintains a score for each cell:
+
+    f(n) = g(n) + h(n)
+
+    Where:
+    g(n) = actual cost from START to n (known exactly)
+    h(n) = estimated cost from n to GOAL (heuristic guess)
+    f(n) = estimated total cost through n
+
+A* always expands the cell with the LOWEST f value.
+
+INTUITION: AIRPORT ANALOGY
+--------------------------
+You're flying from New York to Los Angeles.
+
+    g = miles already traveled
+    h = straight-line distance remaining to LA
+    f = g + h = estimated total trip distance
+
+At each step, you pick the option with lowest f:
+    - Don't just minimize distance traveled (g) - might go wrong direction
+    - Don't just minimize remaining distance (h) - might have gone far out of the way
+    - Minimize the SUM - balances both concerns
+
+THE ALGORITHM
+-------------
+```
+A* Algorithm:
+
+1. Initialize:
+    open_set = {start}           // Cells to explore
+    closed_set = {}              // Cells already explored
+    g[start] = 0                 // Cost from start to start is 0
+    f[start] = h(start)          // Estimated total = 0 + heuristic
+
+2. Loop until done:
+    a. Pick cell with lowest f from open_set --> call it current
+
+    b. If current == goal:
+        SUCCESS! Reconstruct path and return.
+
+    c. Move current from open_set to closed_set
+
+    d. For each neighbor of current:
+        - If neighbor in closed_set: skip (already explored)
+
+        - Calculate tentative g:
+            tentative_g = g[current] + cost(current, neighbor)
+
+        - If neighbor not in open_set OR tentative_g < g[neighbor]:
+            - Update g[neighbor] = tentative_g
+            - Update f[neighbor] = g[neighbor] + h(neighbor)
+            - Set parent[neighbor] = current
+            - Add neighbor to open_set (if not already there)
+
+3. If open_set becomes empty:
+    FAILURE! No path exists.
+```
+
+WALKTHROUGH EXAMPLE
+-------------------
+Find path from S to G on this grid:
+
+    +---+---+---+---+
+    | S |   |   |   |
+    +---+---+---+---+
+    |   | X |   |   |
+    +---+---+---+---+
+    |   | X |   | G |
+    +---+---+---+---+
+
+    X = obstacle
+
+Using Manhattan distance heuristic: h = |x1-x2| + |y1-y2|
+
+Step 1: Start with S
+    open = {S}
+    g[S] = 0
+    h[S] = |0-3| + |0-2| = 5
+    f[S] = 0 + 5 = 5
+
+Step 2: Expand S, add neighbors (Right, Down)
+    open = {Right, Down}
+    g[Right] = 1, h[Right] = 4, f[Right] = 5
+    g[Down] = 1, h[Down] = 4, f[Down] = 5
+
+Step 3: Expand Right (ties broken arbitrarily)
+    open = {Down, (1,1)invalid, (0,2)}
+    ...continue...
+
+Eventually finds path: S -> Down -> Down -> Right -> Right -> Down -> Right (around the obstacles)
+
+THE HEURISTIC
+-------------
+The heuristic h(n) estimates cost from n to goal.
+
+REQUIREMENTS:
+    - ADMISSIBLE: Never overestimates the true cost
+        h(n) <= actual_cost(n to goal)
+
+    - CONSISTENT (optional but nice): Satisfies triangle inequality
+        h(n) <= cost(n, m) + h(m)
+
+If admissible, A* is GUARANTEED to find optimal path.
+
+COMMON HEURISTICS:
+
+1. EUCLIDEAN DISTANCE:
+    h = sqrt((x1-x2)^2 + (y1-y2)^2)
+    Straight-line distance. Always admissible.
+
+2. MANHATTAN DISTANCE:
+    h = |x1-x2| + |y1-y2|
+    Grid distance (no diagonals). Admissible for 4-connected grid.
+
+3. CHEBYSHEV DISTANCE:
+    h = max(|x1-x2|, |y1-y2|)
+    Grid distance (with diagonals). Admissible for 8-connected grid.
+
+We use EUCLIDEAN because we can move in any direction.
+
+A* WITH OUR COSTMAP
+-------------------
+In our system:
+
+    cost(current, neighbor) = movement_cost + costmap[neighbor]
+
+    Where:
+    movement_cost = 1.0 (cardinal) or 1.414 (diagonal)
+    costmap[neighbor] = our perception-aware costmap value
+
+This means A* naturally:
+    - Avoids obstacles (infinite cost)
+    - Prefers shorter paths (low movement cost)
+    - Prefers well-observed regions (low uncertainty cost)
+    - Avoids shadows (high shadow cost)
+
+The path found is the OPTIMAL trade-off between all these factors.
+
+
+================================================================================
+        CHAPTER 18: PERCEPTION-AWARE PLANNING - THE KEY INNOVATION
+================================================================================
+
+WHAT MAKES OUR PLANNING "PERCEPTION-AWARE"
+------------------------------------------
+Traditional planning asks: "Can I physically fit through there?"
+
+Perception-aware planning asks: "Can I safely navigate there given what I know and DON'T know?"
+
+The difference:
+
+TRADITIONAL:
+    Map says "free" --> Cost = 0 --> Go there
+
+PERCEPTION-AWARE:
+    Map says "free" with high confidence --> Cost = low --> Go there
+    Map says "free" with low confidence --> Cost = medium --> Maybe go there
+    Map says "unknown" --> Cost = high --> Avoid if possible
+
+THE THREE STATES OF KNOWLEDGE
+-----------------------------
+For any location in the world, we can be in one of three states:
+
+1. KNOWN FREE (confident):
+    We've observed this area multiple times.
+    We're confident nothing is there.
+    SAFE TO TRAVERSE.
+
+2. KNOWN OCCUPIED (confident):
+    We've observed this area multiple times.
+    We're confident there's an obstacle.
+    CANNOT TRAVERSE.
+
+3. UNCERTAIN:
+    Either:
+    - Never observed (unknown)
+    - Observed but low confidence (poor measurements)
+
+    RISKY TO TRAVERSE.
+
+Traditional planners only distinguish 1 and 2.
+We distinguish all three.
+
+WHY UNCERTAINTY MATTERS FOR SAFETY
+----------------------------------
+Scenario: Robot plans through unexplored region
+
+Traditional:
+    "Unknown = free (no evidence of obstacles)"
+    Robot plans straight line through unexplored area
+    PROBLEM: There might be a crater/rock that we haven't seen!
+
+Perception-Aware:
+    "Unknown = potentially dangerous (no evidence it's safe)"
+    Robot plans around unexplored areas
+    Robot explores cautiously, gaining confidence before committing
+
+REAL-WORLD EXAMPLE:
+
+    Imagine you're hiking in dense fog.
+
+    Traditional approach:
+        "I don't see any cliffs, so there must not be any."
+        Walk straight. Might walk off a cliff!
+
+    Perception-aware approach:
+        "I can't see what's ahead, so I should be careful."
+        Move slowly, probe ahead, don't commit until sure.
+
+ADAPTIVE SAFETY MARGINS
+-----------------------
+We can also make safety margins DEPEND on uncertainty:
+
+    Traditional: Keep 1 meter from all obstacles
+
+    Perception-Aware:
+        - Well-observed obstacle: Keep 0.5 meter (confident)
+        - Uncertain obstacle: Keep 1.5 meters (not sure of exact position)
+        - Unknown region: Stay even further away
+
+Implementation:
+
+    safety_margin = base_margin + uncertainty * uncertainty_factor
+
+HIGH-UNCERTAINTY REGIONS TO AVOID
+---------------------------------
+On the lunar surface, uncertainty is high in:
+
+1. SHADOWS:
+    - Stereo matching fails (no texture)
+    - ORB-SLAM3 loses features
+    - Depth is unreliable
+    --> Add high cost to shadow regions
+
+2. DISTANT AREAS:
+    - Stereo accuracy degrades with distance
+    - Features are smaller, harder to track
+    --> Add cost proportional to distance from rover
+
+3. UNEXPLORED AREAS:
+    - No observations at all
+    - Literally no idea what's there
+    --> Treat as high cost until explored
+
+4. REFLECTIVE SURFACES:
+    - Shiny rocks reflect differently to each camera
+    - Matching fails
+    --> Mark as uncertain if detected
+
+THE EXPLORATION-EXPLOITATION TRADE-OFF
+--------------------------------------
+There's a tension:
+
+EXPLOITATION: Go where we know it's safe (already mapped)
+EXPLORATION: Go where we don't know yet (to build the map)
+
+Our system handles this with COVERAGE PLANNING:
+
+1. Identify FRONTIER cells (boundary between known and unknown)
+2. Evaluate each frontier:
+    - Information gain: How much will we learn?
+    - Cost to reach: How far/risky is the path?
+3. Pick frontier with best information gain / cost ratio
+4. Plan path to that frontier
+5. Execute, map along the way
+6. Repeat
+
+This balances:
+    - Staying safe (don't rush into unknown)
+    - Making progress (eventually explore everything)
+
+
+================================================================================
+================================================================================
+
+                PART V: CONTROL - MAKING THE ROBOT MOVE
+
+================================================================================
+================================================================================
+
+
+================================================================================
+                CHAPTER 19: FROM PLAN TO MOTION
+================================================================================
+
+THE GAP BETWEEN PLANNING AND EXECUTION
+--------------------------------------
+Path planning gives us: A sequence of waypoints
+    "Go to (1, 0), then (2, 0.5), then (3, 1), then..."
+
+But the robot needs: Motor commands
+    "Left wheel at 50% power, right wheel at 45% power"
+
+Control bridges this gap.
+
+THE CONTROL PROBLEM
+-------------------
+Given:
+    - Current position and velocity
+    - Desired trajectory (sequence of waypoints with timing)
+
+Find:
+    - Motor commands that make robot follow trajectory
+
+Challenges:
+    - Robot has momentum (can't turn instantly)
+    - Wheels might slip
+    - Ground might be uneven
+    - Commands take time to have effect
+
+OPEN-LOOP VS CLOSED-LOOP CONTROL
+--------------------------------
+OPEN-LOOP: Send commands, don't check results
+    "Drive forward for 5 seconds"
+    Problem: What if wheels slip? No correction!
+
+CLOSED-LOOP: Measure results, adjust commands
+    "Drive toward goal, if drifting left, steer right"
+    Constantly corrects for errors
+    Much more robust
+
+Our system uses CLOSED-LOOP control:
+    - ORB-SLAM3 tells us where we actually are
+    - Compare to where we want to be
+    - Adjust commands to reduce error
+    - Repeat many times per second
+
+THE CONTROL LOOP
+----------------
+    ┌────────────────────────────────────────────────────┐
+    │                                                    │
+    │   ┌─────────┐    ┌────────────┐    ┌──────────┐   │
+    │   │ Desired │--->│ Controller │--->│  Robot   │   │
+    │   │  State  │    └─────┬──────┘    └────┬─────┘   │
+    │   └─────────┘          │                │         │
+    │        ^               │                │         │
+    │        │               │ Commands       │ Motion  │
+    │        │               v                v         │
+    │        │          ┌────────────────────────┐      │
+    │        │          │      Real World        │      │
+    │        │          └───────────┬────────────┘      │
+    │        │                      │                   │
+    │        │                      │ (physics happens) │
+    │        │                      v                   │
+    │        │          ┌────────────────────────┐      │
+    │        │          │       Sensors          │      │
+    │        │          │  (cameras, ORB-SLAM3)  │      │
+    │        │          └───────────┬────────────┘      │
+    │        │                      │                   │
+    │        │                      │ Actual State      │
+    │        │                      │                   │
+    │        └──────────────────────┘                   │
+    │                                                    │
+    │           This is the FEEDBACK loop               │
+    └────────────────────────────────────────────────────┘
+
+The feedback loop runs continuously:
+1. Compute error = desired - actual
+2. Generate commands to reduce error
+3. Commands affect the robot
+4. Sensors measure actual state
+5. Go to step 1
+
+
+================================================================================
+                CHAPTER 20: TRAJECTORY FOLLOWING
+================================================================================
+
+TRAJECTORY VS PATH
+------------------
+PATH: Sequence of positions
+    [(0, 0), (1, 0), (2, 0.5), (3, 1)]
+
+TRAJECTORY: Path + timing
+    [
+        (t=0.0s, x=0, y=0),
+        (t=1.0s, x=1, y=0),
+        (t=2.0s, x=2, y=0.5),
+        (t=3.0s, x=3, y=1)
+    ]
+
+Trajectory tells us not just WHERE to go, but WHEN to be there.
+
+PURE PURSUIT ALGORITHM
+----------------------
+Pure Pursuit is a simple, effective trajectory following algorithm.
+
+IDEA: Look ahead on the path, steer toward that point.
+
+    Current Robot Position: R
+    Lookahead Point: L (some distance ahead on path)
+
+            Path
+             |
+             |  L (lookahead point)
+             | /
+             |/
+        R------- (steer toward L)
+
+    Robot steers to always "chase" the lookahead point.
+
+THE ALGORITHM:
+1. Find point on path at distance "lookahead_distance" ahead
+2. Compute the curvature needed to reach that point
+3. Set angular velocity proportional to curvature
+
+COMPUTING CURVATURE:
+    Given: Robot at origin, heading along x-axis
+           Lookahead point at (x, y)
+
+    Curvature = 2 * y / (x^2 + y^2)
+
+    This is the curvature of a circular arc from robot to point.
+
+CHOOSING LOOKAHEAD DISTANCE:
+    Too small: Jerky motion (reacts to every small error)
+    Too large: Cuts corners (doesn't follow path precisely)
+
+    Typical: 1-3 meters (adjust based on speed and path curvature)
+
+WHY PURE PURSUIT WORKS:
+    - Self-correcting: If you drift off path, lookahead point pulls you back
+    - Smooth: Circular arcs are smooth, no discontinuities
+    - Simple: Just compute curvature and follow it
+    - Robust: Works even if path isn't perfectly followed
+
+CONVERTING CURVATURE TO WHEEL COMMANDS
+--------------------------------------
+Curvature tells us how sharply to turn.
+We convert this to linear and angular velocity:
+
+    linear_velocity = desired_speed (constant or from trajectory)
+    angular_velocity = linear_velocity * curvature
+
+For a differential drive robot (like our rover):
+    If angular_velocity > 0: Turn left
+    If angular_velocity < 0: Turn right
+    If angular_velocity = 0: Go straight
+
+PID CONTROL FOR FINE ADJUSTMENTS
+--------------------------------
+PID = Proportional-Integral-Derivative
+
+A general-purpose feedback controller for reducing error.
+
+ERROR DEFINITION:
+    error = desired_value - actual_value
+
+PID COMPUTES CORRECTION:
+    correction = Kp * error           (Proportional)
+               + Ki * integral(error)  (Integral)
+               + Kd * derivative(error) (Derivative)
+
+WHAT EACH TERM DOES:
+
+P (PROPORTIONAL):
+    Correction proportional to current error.
+    Large error --> large correction
+    If Kp too high: overshoots and oscillates
+    If Kp too low: slow response
+
+I (INTEGRAL):
+    Correction based on accumulated error over time.
+    Fixes steady-state error (when P alone isn't enough)
+    If Ki too high: slow, overshoots
+    If Ki too low: doesn't fix offset
+
+D (DERIVATIVE):
+    Correction based on rate of change of error.
+    Dampens oscillations, predicts future error.
+    If Kd too high: too sensitive to noise
+    If Kd too low: oscillations
+
+TUNING PID:
+    1. Set Ki = Kd = 0
+    2. Increase Kp until system responds well (some oscillation OK)
+    3. Increase Kd to dampen oscillations
+    4. Increase Ki to eliminate steady-state error (if needed)
+
+OUR CONTROL SYSTEM
+------------------
+We combine Pure Pursuit (for steering) with PID (for speed):
+
+1. Pure Pursuit computes desired angular velocity
+2. PID adjusts linear velocity to match desired speed
+3. Output: (linear_velocity, angular_velocity)
+
+These are sent to the CARLA simulator, which moves the rover.
+
+
+================================================================================
+                CHAPTER 21: CLOSING THE LOOP
+================================================================================
+
+THE COMPLETE CONTROL CYCLE
+--------------------------
+Every control cycle (running at ~10 Hz):
+
+1. GET CURRENT STATE:
+    - Position from ORB-SLAM3
+    - Velocity from ORB-SLAM3 or IMU
+
+2. GET DESIRED STATE:
+    - Interpolate trajectory to current time
+    - Find desired position, velocity, heading
+
+3. COMPUTE ERROR:
+    - Position error = desired_position - actual_position
+    - Heading error = desired_heading - actual_heading
+
+4. COMPUTE CONTROL:
+    - Pure pursuit for steering (angular velocity)
+    - PID for speed (linear velocity)
+
+5. SEND COMMANDS:
+    - Output (linear_vel, angular_vel) to simulator/robot
+
+6. WAIT FOR NEXT CYCLE
+
+HANDLING EDGE CASES
+-------------------
+LARGE POSITION ERROR:
+    If far from path, pure pursuit may give very sharp turns.
+    Solution: Limit maximum angular velocity.
+
+REACHING END OF PATH:
+    What happens when we reach the goal?
+    Solution: Stop, plan new path if needed.
+
+TRACKING LOSS (ORB-SLAM3 FAILS):
+    If we don't know where we are, we can't control!
+    Solution: Stop moving, wait for re-localization.
+
+REPLANNING:
+    Sometimes the plan becomes invalid (new obstacle detected).
+    Solution: Trigger replanning, get new path.
+
+TIMING CONSIDERATIONS
+---------------------
+Control needs to be FAST and CONSISTENT:
+
+    Slow control: Robot drifts before correction applied
+    Inconsistent timing: Jerky motion, poor performance
+
+We run control at fixed rate (e.g., 10 Hz = every 100ms).
+
+CLOSING THE LOOP: THE BIG PICTURE
+---------------------------------
+Everything connects:
+
+    PERCEPTION (10-30 Hz):
+        ORB-SLAM3 processes images --> Pose estimate
+        Stereo matching computes depth --> Dense depth
+
+    MAPPING (1-10 Hz):
+        Depth integrated into voxels --> Updated map
+
+    PLANNING (0.1-1 Hz):
+        Costmap updated --> Path replanned if needed
+
+    CONTROL (10-30 Hz):
+        Follow current path --> Motor commands
+
+All running concurrently, feeding each other.
+
+THE FULL SYSTEM WORKING TOGETHER
+--------------------------------
+    ┌────────────────────────────────────────────────────────────────────┐
+    │                          PERCEPTION                                │
+    │                                                                    │
+    │  Camera Images                                                     │
+    │       │                                                            │
+    │       v                                                            │
+    │  ┌──────────────┐     ┌─────────────────┐                          │
+    │  │   ORB-SLAM3  │────>│  Current Pose   │─────────────────────┐    │
+    │  └──────────────┘     └─────────────────┘                     │    │
+    │       │                                                       │    │
+    │       v                                                       │    │
+    │  ┌──────────────┐     ┌─────────────────┐                     │    │
+    │  │ Stereo Depth │────>│  Dense Depth +  │─────┐               │    │
+    │  │              │     │  Uncertainty    │     │               │    │
+    │  └──────────────┘     └─────────────────┘     │               │    │
+    └───────────────────────────────────────────────┼───────────────┼────┘
+                                                    │               │
+    ┌───────────────────────────────────────────────┼───────────────┼────┐
+    │                          MAPPING              │               │    │
+    │                                               v               │    │
+    │                                    ┌─────────────────┐        │    │
+    │                                    │   Voxel Grid    │        │    │
+    │                                    └────────┬────────┘        │    │
+    │                                             │                 │    │
+    │                                             v                 │    │
+    │                                    ┌─────────────────┐        │    │
+    │                                    │   Height Map    │        │    │
+    │                                    └────────┬────────┘        │    │
+    └─────────────────────────────────────────────┼─────────────────┼────┘
+                                                  │                 │
+    ┌─────────────────────────────────────────────┼─────────────────┼────┐
+    │                         PLANNING            │                 │    │
+    │                                             v                 │    │
+    │                                    ┌─────────────────┐        │    │
+    │                                    │    Costmap      │        │    │
+    │                                    │  (perception-   │        │    │
+    │                                    │    aware)       │        │    │
+    │                                    └────────┬────────┘        │    │
+    │                                             │                 │    │
+    │                                             v                 │    │
+    │                                    ┌─────────────────┐        │    │
+    │                                    │   A* Planner    │        │    │
+    │                                    └────────┬────────┘        │    │
+    │                                             │                 │    │
+    │                                             v                 │    │
+    │                                    ┌─────────────────┐        │    │
+    │                                    │     Path        │────┐   │    │
+    │                                    └─────────────────┘    │   │    │
+    └───────────────────────────────────────────────────────────┼───┼────┘
+                                                                │   │
+    ┌───────────────────────────────────────────────────────────┼───┼────┐
+    │                         CONTROL                           │   │    │
+    │                                                           v   v    │
+    │                                                 ┌─────────────────┐│
+    │                                                 │   Controller    ││
+    │                                                 │  (Pure Pursuit  ││
+    │                                                 │   + PID)        ││
+    │                                                 └────────┬────────┘│
+    │                                                          │         │
+    │                                                          v         │
+    │                                                 ┌─────────────────┐│
+    │                                                 │ Velocity Cmds   ││
+    │                                                 │ (linear, angular││
+    │                                                 └────────┬────────┘│
+    └──────────────────────────────────────────────────────────┼─────────┘
+                                                               │
+                                                               v
+                                                      ┌─────────────────┐
+                                                      │      ROBOT      │
+                                                      │    (wheels)     │
+                                                      └─────────────────┘
+
+
+================================================================================
+================================================================================
+
+                        PART VI: THE COMPLETE SYSTEM
+
+================================================================================
+================================================================================
+
+
+================================================================================
+                CHAPTER 22: HOW EVERYTHING CONNECTS
+================================================================================
+
+THE DATA FLOW
+-------------
+1. Cameras capture stereo images (left + right)
+2. ORB-SLAM3 estimates pose from features
+3. Stereo matching produces dense depth map
+4. Depth + pose integrated into voxel grid
+5. Height map extracted from voxels
+6. Costmap computed from height map + uncertainty
+7. A* plans path on costmap
+8. Controller follows path
+9. Commands sent to robot
+10. Robot moves
+11. Go to step 1
+
+THE TIMING
+----------
+Different components run at different rates:
+
+CAMERAS: 30 Hz (30 images per second)
+ORB-SLAM3: 30 Hz (processes every frame)
+STEREO DEPTH: 10 Hz (every 3rd frame - computationally expensive)
+MAPPING: 5 Hz (update voxels every 6th frame)
+COSTMAP: 2 Hz (update every 0.5 seconds)
+PLANNING: 1 Hz (replan every second if needed)
+CONTROL: 30 Hz (send commands every frame)
+
+THE MEMORY
+----------
+Data structures and their sizes:
+
+IMAGES: 640 x 480 x 3 = 921,600 bytes (~1 MB) per frame
+DEPTH MAP: 640 x 480 x 4 = 1,228,800 bytes (~1.2 MB) per frame
+VOXEL GRID: 200 x 200 x 50 x 4 = 8,000,000 bytes (~8 MB)
+HEIGHT MAP: 200 x 200 x 4 = 160,000 bytes (~160 KB)
+COSTMAP: 100 x 100 x 4 = 40,000 bytes (~40 KB)
+ORB-SLAM3 MAP: ~10,000 features x 3 x 4 = 120,000 bytes (~120 KB)
+
+
+================================================================================
+                    CHAPTER 23: THE CODE STRUCTURE
+================================================================================
+
+REPOSITORY OVERVIEW
+-------------------
+/home/vivek/Desktop/LAC/
+├── LAC-main/                # Lunar Autonomy Challenge framework
+├── ORB_SLAM3-master/        # Visual SLAM system
+└── lunar_navigation/        # Your autonomous navigation system
+
+LAC-MAIN: THE CHALLENGE FRAMEWORK
+---------------------------------
+LAC-main/
+├── agents/
+│   ├── human_agent.py       # Manual control (keyboard)
+│   └── opencv_agent.py      # Example autonomous agent
+├── Leaderboard/
+│   └── leaderboard/
+│       ├── autoagents/
+│       │   └── autonomous_agent.py  # Base class for your agent
+│       ├── agents/
+│       │   └── sensor_interface.py  # Access to sensor data
+│       ├── utils/
+│       │   └── constants.py         # Scoring parameters
+│       └── leaderboard_evaluator.py # Main evaluation loop
+├── docs/
+│   └── geometry.json        # Rover/lander dimensions
+├── RunLeaderboard.sh        # Run the evaluation
+└── RunLunarSimulator.sh     # Start the simulator
+
+ORB_SLAM3-MASTER: VISUAL SLAM
+-----------------------------
+ORB_SLAM3-master/
+├── src/                     # C++ source code
+│   ├── Tracking.cc          # Frame-to-frame tracking
+│   ├── LocalMapping.cc      # Keyframe processing
+│   ├── LoopClosing.cc       # Loop detection and correction
+│   └── System.cc            # Main SLAM system
+├── Examples/Stereo/
+│   ├── stereo_euroc.cc                    # Standard stereo
+│   ├── stereo_euroc_foundationstereo.cc   # With FoundationStereo
+│   └── Lunar.yaml                         # Lunar camera config
+├── Vocabulary/
+│   └── ORBvoc.txt           # Feature vocabulary for place recognition
+├── run_complete_slam_pipeline.sh          # Automated pipeline
+├── extract_bag_to_mav0.py                 # Data conversion
+└── visualize_trajectories_directly.py     # Trajectory comparison
+
+LUNAR_NAVIGATION: YOUR SYSTEM
+-----------------------------
+lunar_navigation/
+├── sensors/
+│   ├── stereo_camera.py     # Interface to CARLA cameras
+│   └── imu.py               # Interface to CARLA IMU
+├── depth/
+│   ├── stereo_matcher.py    # OpenCV stereo matching
+│   └── uncertainty.py       # Depth uncertainty estimation
+├── mapping/
+│   ├── voxel_grid.py        # 3D voxel representation
+│   └── height_map.py        # 2.5D height map
+├── costmap/
+│   ├── costmap.py           # Combined costmap
+│   ├── obstacle_layer.py    # Obstacle detection
+│   ├── uncertainty_layer.py # Perception-aware costs
+│   └── shadow_layer.py      # Shadow detection
+├── planning/
+│   ├── astar.py             # A* path planner
+│   ├── coverage_planner.py  # Exploration planning
+│   └── trajectory.py        # Path smoothing
+├── control/
+│   └── controller.py        # Trajectory following
+├── visualization/
+│   └── visualizer.py        # Real-time display
+├── scripts/
+│   ├── run_autonomous.py    # Main entry point
+│   └── record_data.py       # Data recording
+├── config/
+│   └── params.yaml          # All parameters
+└── tests/
+    └── test_*.py            # Unit tests
+
+
+================================================================================
+                    CHAPTER 24: RUNNING THE SYSTEM
+================================================================================
+
+STEP 1: START THE SIMULATOR
+---------------------------
+Open a terminal:
+    cd /home/vivek/Desktop/LAC/LAC-main
+    ./RunLunarSimulator.sh
+
+This starts the CARLA simulator with the lunar environment.
+Wait until you see "Lunar Simulator ready".
+
+STEP 2: RUN YOUR AGENT
+----------------------
+Open another terminal:
+    cd /home/vivek/Desktop/LAC/LAC-main
+    ./RunLeaderboard.sh
+
+By default, this runs human_agent.py (manual control).
+Use keyboard to drive: W/S (forward/back), A/D (turn).
+
+To run YOUR autonomous agent:
+    Edit RunLeaderboard.sh
+    Change TEAM_AGENT to point to your agent file
+
+STEP 3: WHAT HAPPENS
+--------------------
+1. Simulator provides sensor data:
+    - Stereo images (left + right cameras)
+    - IMU data (acceleration, rotation)
+    - Ground truth (for evaluation only)
+
+2. Your agent receives this data every frame
+
+3. Your agent returns velocity commands:
+    - Linear velocity (m/s)
+    - Angular velocity (rad/s)
+
+4. Simulator moves the rover accordingly
+
+5. Repeat until mission time expires or battery depletes
+
+STEP 4: SCORING
+---------------
+When the mission ends:
+    - Your height map is compared to ground truth
+    - Rock detections are checked
+    - Productivity (cells mapped per second) is computed
+    - Fiducial detections are checked
+
+Final score is displayed and saved.
+
+
+================================================================================
+================================================================================
+
+                        PART VII: GOING DEEPER
+
+================================================================================
+================================================================================
+
+
+================================================================================
+            CHAPTER 25: THE MATHEMATICS BEHIND IT ALL
+================================================================================
+
+COORDINATE SYSTEMS
+------------------
+We work with multiple coordinate frames:
+
+WORLD FRAME:
+    Fixed reference frame
+    Origin at lander (or mission start)
+    X = East, Y = North, Z = Up
+
+CAMERA FRAME:
+    Attached to camera
+    Origin at camera center
+    Z = forward, X = right, Y = down
+
+ROBOT FRAME:
+    Attached to robot body
+    Usually aligned with camera or between wheels
+
+Converting between frames using rotation matrix R and translation t:
+    Point_world = R * Point_camera + t
+
+ROTATION REPRESENTATIONS
+------------------------
+We can represent rotation in several ways:
+
+ROTATION MATRIX (3x3):
+    9 numbers, but only 3 degrees of freedom
+    Easy to compose: R_total = R1 * R2
+
+EULER ANGLES (roll, pitch, yaw):
+    3 numbers
+    Intuitive but has gimbal lock problem
+
+QUATERNION (qw, qx, qy, qz):
+    4 numbers
+    No gimbal lock, efficient interpolation
+    ORB-SLAM3 uses quaternions
+
+CAMERA PROJECTION (DETAILED)
+----------------------------
+Full projection equation:
+
+    [u]   [fx  0  cx] [r11 r12 r13 tx] [X]
+    s*[v] = [0  fy cy] [r21 r22 r23 ty] [Y]
+    [1]   [0  0  1 ] [r31 r32 r33 tz] [Z]
+                                       [1]
+
+    = K * [R | t] * P_world
+
+Where:
+    (X, Y, Z, 1) = homogeneous world coordinates
+    [R | t] = camera extrinsics (pose)
+    K = camera intrinsics
+    s = depth (scale factor)
+    (u, v) = pixel coordinates
+
+BUNDLE ADJUSTMENT (DETAILED)
+----------------------------
+Bundle Adjustment minimizes reprojection error:
+
+    minimize over {cameras, points}:
+        Σ_i Σ_j ||π(C_i, P_j) - x_ij||^2
+
+Where:
+    C_i = camera i pose
+    P_j = 3D point j position
+    π(C, P) = projection of P into camera C
+    x_ij = observed pixel location of point j in camera i
+    || || = Euclidean distance
+
+This is a nonlinear least squares problem.
+Solved using Levenberg-Marquardt algorithm.
+
+STEREO TRIANGULATION (DETAILED)
+-------------------------------
+Given:
+    - Pixel (u_L, v_L) in left camera
+    - Pixel (u_R, v_R) in right camera
+    - Camera matrices K_L, K_R, [R|t] (extrinsics)
+
+The rays from each camera to the 3D point:
+    Ray_L(s) = C_L + s * d_L
+    Ray_R(t) = C_R + t * d_R
+
+Where:
+    C = camera center
+    d = ray direction (computed from pixel and K)
+    s, t = parameters along rays
+
+Ideally, rays intersect. In practice, find closest point.
+
+
+================================================================================
+            CHAPTER 26: INTERVIEW QUESTIONS AND ANSWERS
+================================================================================
+
+Q: What is SLAM?
+A: Simultaneous Localization And Mapping. The robot figures out where it is
+   (localization) while building a map of the environment (mapping). These
+   two problems are interdependent - you need a map to localize, but you
+   need to know your position to build a map. SLAM solves both together.
+
+Q: How does stereo vision work?
+A: Two cameras see the same scene from slightly different positions. The same
+   point appears at different pixel locations in each image (disparity).
+   Using geometry, depth = baseline * focal_length / disparity. Larger
+   disparity means closer objects.
+
+Q: What is ORB-SLAM3?
+A: A visual SLAM system that tracks camera motion and builds a sparse map
+   using ORB features. It has three parallel threads: tracking (every frame),
+   local mapping (keyframes), and loop closing (recognizing revisited places).
+
+Q: What is FoundationStereo?
+A: A deep learning model for stereo depth estimation. Unlike traditional
+   stereo matching, it learns features and matching from data, achieving
+   95%+ depth coverage compared to ~4% for classical methods.
+
+Q: What makes your planner "perception-aware"?
+A: Traditional planners treat unknown space as free. Our planner treats
+   unknown space as potentially dangerous. The costmap encodes uncertainty,
+   so the robot prefers well-observed regions and avoids areas where
+   perception is unreliable.
+
+Q: How does A* work?
+A: A* searches for the shortest path using f(n) = g(n) + h(n), where g is
+   cost so far and h is estimated remaining cost. It expands nodes in order
+   of f, guaranteeing optimal path if heuristic is admissible (never
+   overestimates).
+
+Q: What is bundle adjustment?
+A: An optimization that jointly refines camera poses and 3D point positions
+   by minimizing reprojection error - the difference between where points
+   should appear in images vs. where they actually appear.
+
+Q: What is a costmap?
+A: A 2D grid where each cell has a traversal cost. High cost = dangerous or
+   impossible. The path planner finds the path minimizing total cost. Our
+   costmap has multiple layers: obstacles, inflation, uncertainty, shadows.
+
+Q: What is pure pursuit?
+A: A path following algorithm. Pick a "lookahead" point on the path, compute
+   the curvature needed to reach it, and set steering accordingly. Simple,
+   smooth, and self-correcting.
+
+Q: Walk me through your system end-to-end.
+A: Stereo cameras capture images. ORB-SLAM3 estimates pose. Stereo matching
+   produces depth with uncertainty. Depth is integrated into a voxel grid.
+   Height map is extracted. Costmap is computed with obstacle, inflation,
+   uncertainty, and shadow layers. A* plans a path. Pure pursuit follows
+   the path. Commands go to the robot. The cycle repeats.
+
+
+================================================================================
+            CHAPTER 27: NEXT STEPS AND RESOURCES
+================================================================================
+
+BOOKS TO READ
+-------------
+1. "Multiple View Geometry in Computer Vision" (Hartley & Zisserman)
+   - The definitive reference for 3D vision geometry
+
+2. "Probabilistic Robotics" (Thrun, Burgard, Fox)
+   - Foundation for robot state estimation and SLAM
+
+3. "Planning Algorithms" (LaValle)
+   - Comprehensive coverage of motion planning
+
+ONLINE COURSES
+--------------
+1. Cyrill Stachniss YouTube
+   - Excellent SLAM and robotics lectures
+   - https://youtube.com/c/CyrillStachniss
+
+2. First Principles of Computer Vision
+   - Clear explanations of vision fundamentals
+   - YouTube playlist
+
+PAPERS TO READ
+--------------
+1. "ORB-SLAM3: An Accurate Open-Source Library for Visual, Visual-Inertial
+    and Multi-Map SLAM" (Campos et al., 2021)
+
+2. "DROID-SLAM: Deep Visual SLAM for Monocular, Stereo, and RGB-D Cameras"
+   (Teed & Deng, 2021)
+
+3. "Semi-Global Matching" (Hirschmuller, 2008)
+
+SOFTWARE TO EXPLORE
+-------------------
+1. ROS (Robot Operating System) - robotics middleware
+2. OpenCV - computer vision library
+3. Open3D - 3D data processing
+4. GTSAM - factor graph optimization
+
+WHAT TO BUILD NEXT
+------------------
+1. Run the system on more challenging environments
+2. Add rock detection using machine learning
+3. Implement multi-robot coordination
+4. Deploy on real hardware (if available)
+
+CAREER PATHS
+------------
+This project gives you skills for:
+- Autonomous vehicle companies (Waymo, Cruise, Nuro)
+- Space robotics (NASA, SpaceX, Blue Origin)
+- Robotics startups
+- Research (PhD programs in robotics/vision)
+
+
+================================================================================
+================================================================================
+================================================================================
+
+                            END OF DOCUMENT
+
+================================================================================
+================================================================================
+================================================================================
+
+SUMMARY
+-------
+This document explained, from first principles:
+
+1. What a robot is and what autonomy means
+2. The Lunar Autonomy Challenge and its goals
+3. How cameras work and why depth is hard to measure
+4. Stereo vision and how two cameras give depth
+5. FoundationStereo and deep learning for better depth
+6. ORB-SLAM3 and how it tracks position
+7. How uncertainty is measured and why it matters
+8. Voxel grids and height maps for representing terrain
+9. Costmaps and why ours is "perception-aware"
+10. A* algorithm for finding optimal paths
+11. Control systems for following planned paths
+12. How all the pieces connect into a complete system
+
+The key innovation of this system is PERCEPTION-AWARE PLANNING:
+The robot doesn't just avoid obstacles - it avoids uncertainty.
+It knows what it knows and what it doesn't know, and plans accordingly.
+
+This makes navigation fundamentally safer, especially in challenging
+environments like the lunar surface where perception can easily fail.
+
+================================================================================
+                    Document generated for Vivek Mattam
+                    Lunar Autonomy Challenge Project
+                    January 2026
+================================================================================
