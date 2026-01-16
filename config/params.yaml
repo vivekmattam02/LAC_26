@@ -1,6 +1,16 @@
-# Lunar Navigation System Configuration
+# =============================================================================
+# LUNAR NAVIGATION SYSTEM - CONFIGURATION FILE
+# =============================================================================
+#
+# This file contains all configurable parameters for the perception-aware
+# lunar navigation system. Adjust these values based on your hardware,
+# environment, and performance requirements.
+#
+# =============================================================================
 
-# Camera parameters
+# =============================================================================
+# CAMERA PARAMETERS
+# =============================================================================
 camera:
   image_width: 640
   image_height: 480
@@ -11,58 +21,179 @@ camera:
   cam_z: 1.0
   cam_pitch: -10
 
-# Stereo matching
+# =============================================================================
+# STEREO DEPTH ESTIMATION
+# =============================================================================
+# Parameters for computing depth from stereo camera pairs
 stereo:
+  # Physical distance between stereo cameras (meters)
+  # For LAC: Using FrontLeft and FrontRight cameras
+  baseline: 0.162
+
+  # Camera intrinsics (pixels)
+  fx: 458.0    # Focal length x
+  fy: 458.0    # Focal length y
+  cx: 320.0    # Principal point x (typically width/2)
+  cy: 240.0    # Principal point y (typically height/2)
+
+  # Stereo matching method: 'sgbm' (CPU) or 'foundation' (GPU, more accurate)
+  method: 'sgbm'
+
+  # For SGBM method
+  max_disparity: 128   # Maximum pixel disparity to search
+  min_disparity: 0     # Minimum pixel disparity
+  block_size: 5        # Matching block size (odd number: 3, 5, 7, 9, 11)
+
+  # For FoundationStereo method (if using)
+  foundation_model_path: null  # Path to pretrained model weights
+
+  # Depth filtering
+  min_depth: 0.5       # Minimum valid depth (meters) - closer is clipped
+  max_depth: 20.0      # Maximum valid depth (meters) - farther is clipped
+
+
+# =============================================================================
+# DEPTH UNCERTAINTY ESTIMATION
+# =============================================================================
+uncertainty:
+  # Stereo geometry (same as above, needed for uncertainty formula)
   baseline: 0.162
   fx: 458.0
-  max_disparity: 128
-  min_disparity: 1
 
-# Depth uncertainty
-uncertainty:
+  # Base disparity uncertainty (pixels)
+  # How accurate is your stereo matching? SGBM typically 0.3-1.0 pixels
+  sigma_disparity: 0.5
+
+  # Legacy parameter
   max_consistency_error: 2.0
 
-# Mapping
-mapping:
-  resolution: 0.1  # meters per voxel
-  grid_size: [200, 200, 50]
-  origin: [-10, -10, -2]
+  # Confidence thresholds
+  min_confidence: 0.1
+  max_uncertainty: 10.0
+  min_uncertainty: 0.01
 
-# Costmap
+  # Weighting for combining uncertainty sources
+  weight_geometric: 0.5
+  weight_confidence: 0.5
+
+
+# =============================================================================
+# VOXEL GRID MAPPING
+# =============================================================================
+mapping:
+  # Voxel resolution (meters per voxel)
+  resolution: 0.1
+
+  # Grid dimensions (number of voxels in x, y, z)
+  # 200 x 200 x 50 = 2 million voxels
+  grid_size: [200, 200, 50]
+
+  # World origin of the grid (meters)
+  origin: [-10.0, -10.0, -2.0]
+
+  # Occupancy update probabilities
+  prob_hit: 0.7
+  prob_miss: 0.4
+  occ_threshold: 0.5
+
+
+# =============================================================================
+# HEIGHT MAP
+# =============================================================================
+height_map:
+  resolution: 0.1
+  size_x: 200
+  size_y: 200
+  origin: [-10.0, -10.0]
+  unknown_height: 0.0
+  max_slope: 30.0
+
+
+# =============================================================================
+# PERCEPTION-AWARE COSTMAP
+# =============================================================================
 costmap:
   resolution: 0.2
   size_x: 100
   size_y: 100
-  origin: [-10, -10]
+  origin: [-10.0, -10.0]
+
+  # Robot parameters
+  robot_radius: 0.5
+  inflation_radius: 0.3
+
+  # Layer weights
   obstacle_weight: 100.0
+  inflation_weight: 20.0
   uncertainty_weight: 5.0
   shadow_weight: 10.0
-  inflation_weight: 20.0
-  robot_radius: 0.5
-  inflation_radius: 1.0
+  slope_weight: 3.0
 
-# Planning
+
+# =============================================================================
+# A* PATH PLANNER
+# =============================================================================
 planning:
+  heuristic_weight: 1.0
+  allow_diagonal: true
+  max_iterations: 100000
   coverage_radius: 5.0
   min_frontier_size: 3
 
-# Trajectory
+
+# =============================================================================
+# TRAJECTORY GENERATION
+# =============================================================================
 trajectory:
   max_velocity: 1.0
   max_acceleration: 0.5
   smoothing_weight: 0.5
 
-# Control
+
+# =============================================================================
+# CONTROLLER (Pure Pursuit + PID)
+# =============================================================================
 control:
-  lookahead_distance: 2.0
+  # Pure Pursuit parameters
+  lookahead_distance: 1.0
+  min_lookahead: 0.3
+
+  # Velocity limits (LAC IPEx: max 0.49 m/s linear, 4.13 rad/s angular)
+  max_linear_velocity: 0.4
+  max_angular_velocity: 1.0
+  min_linear_velocity: 0.05
   max_steer: 0.5
   max_throttle: 0.5
+
+  # Goal tolerances
+  goal_tolerance: 0.3
+  waypoint_tolerance: 0.5
+
+  # PID gains for speed control
   kp: 1.0
   ki: 0.0
   kd: 0.1
 
-# Visualization
+
+# =============================================================================
+# VISUALIZATION
+# =============================================================================
 visualization:
+  enabled: false
   window_name: "Lunar Navigation"
+  update_rate: 10
+  show_depth: true
   show_uncertainty: true
+  show_costmap: true
   show_path: true
+  show_voxels: false
+
+
+# =============================================================================
+# SYSTEM
+# =============================================================================
+system:
+  loop_rate: 10
+  log_level: INFO
+  record_data: false
+  record_path: './recorded_data'
