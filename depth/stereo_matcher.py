@@ -57,6 +57,7 @@ class StereoMethod(Enum):
     """Available stereo matching methods"""
     SGBM = "sgbm"                    # Classical Semi-Global Block Matching
     FOUNDATION = "foundation"        # Deep learning FoundationStereo
+    FOUNDATION_FAST = "foundation_fast"  # Optimized FoundationStereo inference
 
 
 class StereoMatcher:
@@ -94,7 +95,7 @@ class StereoMatcher:
                 - fy: Focal length y (pixels), default 458.0
                 - cx: Principal point x, default 320.0
                 - cy: Principal point y, default 240.0
-                - method: 'sgbm' or 'foundation', default 'sgbm'
+                - method: 'sgbm', 'foundation', or 'foundation_fast', default 'sgbm'
                 - max_disparity: Maximum disparity to search, default 128
                 - min_disparity: Minimum disparity, default 0
                 - block_size: SGBM block size (odd number), default 5
@@ -144,7 +145,7 @@ class StereoMatcher:
 
         if self.method == StereoMethod.SGBM:
             self._init_sgbm()
-        elif self.method == StereoMethod.FOUNDATION:
+        elif self.method in (StereoMethod.FOUNDATION, StereoMethod.FOUNDATION_FAST):
             self._init_foundation_stereo(config)
 
         # Depth range limits (for filtering outliers)
@@ -231,18 +232,53 @@ class StereoMatcher:
         """
         try:
             import torch
+            import torch.nn as nn
 
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             print(f"[StereoMatcher] Using device: {self.device}")
 
+            self.foundation_use_amp = bool(config.get('foundation_use_amp', True))
+            self.foundation_use_half = bool(config.get('foundation_use_half', self.method == StereoMethod.FOUNDATION_FAST))
+            self.foundation_channels_last = bool(config.get('foundation_channels_last', self.method == StereoMethod.FOUNDATION_FAST))
+            self.foundation_compile = bool(config.get('foundation_compile', self.method == StereoMethod.FOUNDATION_FAST))
+            self.foundation_compile_mode = config.get('foundation_compile_mode', 'reduce-overhead')
+
             # Path to pretrained model weights
             model_path = config.get('foundation_model_path', None)
+            loader_spec = config.get('foundation_loader', None)
 
             if model_path is not None:
                 # Load the model (architecture depends on FoundationStereo version)
-                # This is a placeholder - actual loading depends on the model
-                self.foundation_model = self._load_foundation_model(model_path)
+                self.foundation_model = self._load_foundation_model(model_path, loader_spec)
+
+                # If the model loader is still a placeholder, fail safely to SGBM
+                if self.foundation_model is None:
+                    print("[StereoMatcher] WARNING: Foundation model loader not configured, falling back to SGBM")
+                    self.method = StereoMethod.SGBM
+                    self._init_sgbm()
+                    return
+
+                if not isinstance(self.foundation_model, nn.Module):
+                    print("[StereoMatcher] WARNING: Loader did not return torch.nn.Module, falling back to SGBM")
+                    self.method = StereoMethod.SGBM
+                    self._init_sgbm()
+                    return
+
                 self.foundation_model.to(self.device)
+
+                if self.foundation_channels_last:
+                    self.foundation_model = self.foundation_model.to(memory_format=torch.channels_last)
+
+                if self.foundation_use_half and self.device.type == 'cuda':
+                    self.foundation_model = self.foundation_model.half()
+
+                if self.foundation_compile and hasattr(torch, 'compile'):
+                    try:
+                        self.foundation_model = torch.compile(self.foundation_model, mode=self.foundation_compile_mode)
+                        print(f"[StereoMatcher] torch.compile enabled ({self.foundation_compile_mode})")
+                    except Exception as exc:
+                        print(f"[StereoMatcher] WARNING: torch.compile failed ({exc}), continuing without compile")
+
                 self.foundation_model.eval()
                 print(f"[StereoMatcher] FoundationStereo loaded from {model_path}")
             else:
@@ -255,24 +291,39 @@ class StereoMatcher:
             self.method = StereoMethod.SGBM
             self._init_sgbm()
 
-    def _load_foundation_model(self, model_path: str):
+    def _load_foundation_model(self, model_path: str, loader_spec: Optional[str] = None):
         """
         Load FoundationStereo model from checkpoint.
 
         This is a placeholder - the actual implementation depends on
         which FoundationStereo version/architecture you're using.
         """
-        import torch
-        import torch.nn as nn
+        import importlib
 
-        # Placeholder: In reality, you would load the actual model architecture
-        # Example: from foundation_stereo import FoundationStereo
-        #          model = FoundationStereo()
-        #          model.load_state_dict(torch.load(model_path))
+        if not loader_spec:
+            print("[StereoMatcher] No foundation_loader configured; cannot construct FoundationStereo model")
+            return None
 
-        print(f"[StereoMatcher] Loading model from {model_path}")
-        # For now, we'll just return None and fall back to SGBM
-        return None
+        if ":" not in loader_spec:
+            print("[StereoMatcher] Invalid foundation_loader format. Use 'module.submodule:function_name'")
+            return None
+
+        module_name, fn_name = loader_spec.split(":", 1)
+
+        try:
+            module = importlib.import_module(module_name)
+            loader_fn = getattr(module, fn_name)
+        except (ImportError, AttributeError) as exc:
+            print(f"[StereoMatcher] Failed to resolve foundation loader '{loader_spec}': {exc}")
+            return None
+
+        print(f"[StereoMatcher] Loading model from {model_path} via {loader_spec}")
+
+        try:
+            return loader_fn(model_path)
+        except Exception as exc:
+            print(f"[StereoMatcher] Foundation loader raised an error: {exc}")
+            return None
 
     def compute_depth(
         self,
@@ -470,7 +521,13 @@ class StereoMatcher:
         right_tensor = self._preprocess_for_network(img_right)
 
         # Run inference
-        with torch.no_grad():
+        amp_enabled = bool(
+            self.foundation_use_amp
+            and self.device.type == 'cuda'
+            and hasattr(torch.cuda, 'amp')
+        )
+
+        with torch.no_grad(), torch.cuda.amp.autocast(enabled=amp_enabled):
             # FoundationStereo forward pass
             # Output format depends on model version
             output = self.foundation_model(left_tensor, right_tensor)
@@ -520,6 +577,12 @@ class StereoMatcher:
 
         # Move to device
         tensor = tensor.to(self.device)
+
+        if self.foundation_channels_last:
+            tensor = tensor.contiguous(memory_format=torch.channels_last)
+
+        if self.foundation_use_half and self.device.type == 'cuda':
+            tensor = tensor.half()
 
         return tensor
 

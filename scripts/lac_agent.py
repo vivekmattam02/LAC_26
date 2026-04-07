@@ -437,6 +437,7 @@ class LACAutonomousAgent:
         self._agent = None
         self._config_path = path_to_conf_file
         self._geometric_map = None
+        self._current_goal = None  # goal can be set later via set_goal()
 
     def setup(self, path_to_conf_file: str = None):
         """
