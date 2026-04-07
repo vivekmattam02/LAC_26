@@ -36,7 +36,10 @@ stereo:
   cx: 320.0    # Principal point x (typically width/2)
   cy: 240.0    # Principal point y (typically height/2)
 
-  # Stereo matching method: 'sgbm' (CPU) or 'foundation' (GPU, more accurate)
+  # Stereo matching method:
+  # - 'sgbm': CPU baseline, fastest to bring up
+  # - 'foundation': deep model inference backend
+  # - 'foundation_fast': same backend with aggressive inference-speed defaults
   method: 'sgbm'
 
   # For SGBM method
@@ -44,8 +47,17 @@ stereo:
   min_disparity: 0     # Minimum pixel disparity
   block_size: 5        # Matching block size (odd number: 3, 5, 7, 9, 11)
 
+
   # For FoundationStereo method (if using)
   foundation_model_path: null  # Path to pretrained model weights
+  foundation_loader: null      # Python loader path: 'module.submodule:function_name'
+
+  # Fast inference toggles (used by foundation/foundation_fast)
+  foundation_use_amp: true
+  foundation_use_half: false
+  foundation_channels_last: false
+  foundation_compile: false
+  foundation_compile_mode: 'reduce-overhead'
 
   # Depth filtering
   min_depth: 0.5       # Minimum valid depth (meters) - closer is clipped
